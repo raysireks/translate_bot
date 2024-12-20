@@ -1,0 +1,14 @@
+fastapi-poe
+python-telegram-bot
+emoji
+ffmpeg-python
+pydub
+numpy
+faster-whisper
+fastapi
+uvicorn
+huggingface_hub
+scikit-learn
+langdetect
+pyht
+librosa
