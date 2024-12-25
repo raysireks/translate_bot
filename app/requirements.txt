@@ -12,3 +12,9 @@ scikit-learn
 langdetect
 pyht
 librosa
+anthropic
+pytest>=7.0.0
+pytest-cov>=4.0.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
+pytest-asyncio>=0.23.0

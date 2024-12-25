@@ -1,25 +1,22 @@
 import asyncio
 import io
-import os
 import pickle
-from pathlib import Path
 import re
 from telegram import Update
 from telegram.ext import ContextTypes
-import fastapi_poe as fp
 import emoji
-import numpy as np
-from app.config import POE_API_KEY, ALLOWED_GROUP_ID, ADMIN_USER_ID
-from enum import Enum
+from app.config import ALLOWED_GROUP_ID, ADMIN_USER_ID
 import logging
 from types import MappingProxyType
-from pydub import AudioSegment
 
 from app.service.audio_transcription import TranscriptionMode, WhisperHandler
 from app.service.pht import generate_tts
+from app.service.anthropic import AnthropicService
 
 logger = logging.getLogger(__name__)
 
+# Initialize the Anthropic service
+anthropic_service = AnthropicService()
 
 def is_emoji_only(text: str) -> bool:
     return all(c in emoji.EMOJI_DATA or c.isspace() for c in text)
@@ -28,23 +25,6 @@ def is_emoji_only(text: str) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Start command from user {update.message.from_user.id}")
     await send_message(update, context, "Hello! I'm ready to translate")
-
-
-async def get_poe_response(message_text: str, api_key: str) -> str:
-    logger.info("Getting Poe response for message")
-    message = fp.ProtocolMessage(role="user", content=message_text)
-    response_parts = []
-    async for partial in fp.get_bot_response(
-        messages=[message], bot_name="cartagena-trnsl8", api_key=api_key
-    ):
-        if isinstance(partial, str):
-            response_parts.append(partial)
-        elif hasattr(partial, "text"):
-            response_parts.append(partial.text)
-
-    final_response = "".join(response_parts)
-    logger.info(f"Got Poe response: {final_response[:100]}...")
-    return final_response
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,12 +44,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        response = await get_poe_response(update.message.text, POE_API_KEY)
+        response = await anthropic_service.get_response(user_input=update.message.text)
         if response:
             logger.info("Sending response to user")
             asyncio.create_task(send_message(update, context, response))
         else:
-            logger.warning("Empty response from Poe")
+            logger.warning("Empty response from Anthropic")
             asyncio.create_task(send_message(update, context, 
                 "Sorry, I received an empty response. Please try again."
             ))
@@ -104,7 +84,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             asyncio.create_task(update.message.chat.send_action("typing"))
             
             if transcribed_text:
-                translation = await get_poe_response(transcribed_text, POE_API_KEY)
+                translation = await anthropic_service.get_response(user_input=transcribed_text)
                 asyncio.create_task(message_filter(update, context, translation))
                 
                 if translation:
@@ -114,7 +94,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     
                     # Generate TTS response
-                    # tts_response = await handler.cloneAudioTTS(context, translation, voice_data)
                     tts_response = await generate_tts(voice_data, translation)
                     audio_bytes = bytes(tts_response)     
                     audio_buffer = io.BytesIO(audio_bytes)
@@ -125,7 +104,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         audio_buffer
                     )
                 else:
-                    logger.warning("Empty translation from Poe")
+                    logger.warning("Empty translation from Anthropic")
                     asyncio.create_task(
                         send_message(update, context, "Sorry, couldn't get translation. Original text: " + transcribed_text)
                     )
@@ -163,7 +142,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 #             await update.message.chat.send_action("typing")
 #             if transcribed_text:
-#                 translation = await get_poe_response(transcribed_text, POE_API_KEY)
+#                 translation = await get_poe_response(transcribed_text)
 #                 await message_filter(update, context, translation)
 #                 if translation:
 #                     logger.info("Sending translation to user")
