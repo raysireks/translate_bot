@@ -7,11 +7,15 @@ import re
 from huggingface_hub import InferenceClient
 from app.config import HF_TOKEN
 from pydub import AudioSegment
-from faster_whisper import WhisperModel
 from typing import Optional
 from telegram.ext import ContextTypes
 from langdetect import detect
 
+# Only import whisper-related modules if in prod
+if os.getenv('ENV') == 'prod':
+    from faster_whisper import WhisperModel
+else:
+    WhisperModel = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +26,8 @@ class TranscriptionMode(Enum):
 class WhisperHandler:
     def __init__(self, mode: TranscriptionMode, model_name: str = "base"):
         self.mode = mode
-        if mode == TranscriptionMode.LOCAL.value:
+        # Only use local models if ENV=prod
+        if mode == TranscriptionMode.LOCAL.value and os.getenv('ENV') == 'prod':
             WHISPER_MODEL_PATH = os.environ.get("WHISPER_MODEL_PATH", f"/data/models/{model_name}")
             WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
             WHISPER_CPU_THREADS = int(os.environ.get("WHISPER_CPU_THREADS", "16"))
@@ -37,16 +42,20 @@ class WhisperHandler:
                 WHISPER_CPU_THREADS
             )
         else:
+            # Default to API mode if not prod or not LOCAL mode
             if model_name == 'small':
                 model = "openai/whisper-small"
             elif model_name == 'large':
                 model = "openai/whisper-large-v3-turbo"
+            else:
+                model = "openai/whisper-small"  # Default to small if unspecified
+            
+            logger.info(f"Using HuggingFace API with model: {model}")
             self.client = InferenceClient(
                 model,
                 token=HF_TOKEN
             )
 
-    
     async def cloneAudioTTS(self, context: ContextTypes.DEFAULT_TYPE, text: str, input_audio):
         client = InferenceClient(token=HF_TOKEN)
         
@@ -66,37 +75,9 @@ class WhisperHandler:
     async def transcribe_voice(self, voice_data: bytearray, detect_language: bool = False) -> str:
         # processed_data = await preprocess_audio(voice_data)
         
-        if self.mode == TranscriptionMode.LOCAL.value:
+        if self.mode == TranscriptionMode.LOCAL.value and os.getenv('ENV') == 'prod':
             return await self._transcribe_local(voice_data, detect_language)
         return await self._transcribe_hf(voice_data)
-
-    async def _transcribe_local(self, voice_data: bytearray, detect_language: bool) -> str:
-        logger.info("transcribing with local")
-        import os
-        
-        # Save to temp file
-        temp_path = "temp_audio.raw"
-        with open(temp_path, "wb") as f:
-            f.write(voice_data)
-        
-        try:
-            segments, info = self.model.transcribe(temp_path)
-            detected_lang = info.language
-            logger.info(f"Detected language: {detected_lang}")
-
-            if detect_language:
-                logger.info("rerunning translation for medium") 
-                segments, info = self.model.transcribe(
-                    temp_path,
-                    language=detected_lang,
-                    beam_size=5,
-                    temperature=0.0,
-                )
-
-            return " ".join([segment.text for segment in segments]).strip()
-            
-        finally:
-            os.remove(temp_path)
 
     async def _transcribe_hf(self, voice_data: bytearray) -> str:
         logger.info("transcribing with hf")

@@ -103,3 +103,8 @@ class PHT:
         except Exception as e:
             logger.error(f"Error during TTS generation: {str(e)}", exc_info=True)
             raise
+
+def generate_tts(text: str, voice_id: str = None):
+    """Generate text-to-speech audio"""
+    client = PHT()
+    return client.pht_client.generate_audio(text, voice_id)

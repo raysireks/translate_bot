@@ -1,0 +1,36 @@
+FROM python:3.11-slim
+
+# Install system dependencies and debugging tools
+RUN apt-get update && apt-get install -y \
+   wget \
+   ffmpeg \
+   libsndfile1 \
+   build-essential \
+   python3-dev \
+   gdb \
+   procps \
+   && rm -rf /var/lib/apt/lists/*
+
+# Add debugging environment variables
+ENV PYTHONFAULTHANDLER=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create directory for core dumps
+RUN mkdir -p /cores
+ENV CORE_PATTERN="/cores/core.%e.%p"
+
+COPY app/ .
+WORKDIR /
+
+# Add a wrapper script for the main command
+COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+
+ENV PORT 8080
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["python", "-m", "app.main"] 

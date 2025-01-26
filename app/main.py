@@ -1,7 +1,14 @@
+import asyncio
+import logging
 import os
+import pickle
+from pathlib import Path
+from types import MappingProxyType
+
+from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from app.config import BOT_TOKEN, WEBHOOK_URL, WEBHOOK_PATH, RUN_MODE
+from telegram.ext import Application
+
 from app.bot.handlers import (
     set_transcription_mode,
     set_translation_mode,
@@ -15,45 +22,17 @@ from app.bot.handlers import (
     toggle_detection,
     toggle_reply,
 )
-from fastapi import FastAPI, Request
-import uvicorn
-import asyncio
-import logging
-import pickle
-from pathlib import Path
-from types import MappingProxyType
-
+from app.config import BOT_TOKEN, WEBHOOK_URL, WEBHOOK_PATH, RUN_MODE
 from app.service.audio_transcription import TranscriptionMode
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-
-async def create_application():
-    logger.info("Creating application")
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("t", t_command))
-    app.add_handler(CommandHandler("getchatid", get_chat_id))
-    app.add_handler(CommandHandler("translation", set_translation_mode))
-    app.add_handler(CommandHandler("transcription", set_transcription_mode))
-    app.add_handler(CommandHandler("detect", toggle_detection))
-    app.add_handler(CommandHandler("reply", toggle_reply))
-    app.add_handler(CommandHandler("voice", set_voice_type))
-    app.add_handler(CommandHandler("help", show_commands))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-
-    logger.info("Handlers added")
-    return app
-
-
 fastapi_app = FastAPI()
 telegram_app = None
-
 
 @fastapi_app.on_event("startup")
 async def startup():
@@ -78,6 +57,24 @@ async def startup():
     if RUN_MODE == "webhook":
         await telegram_app.bot.set_webhook(WEBHOOK_URL)
 
+async def create_application():
+    logger.info("Creating application")
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("t", t_command))
+    app.add_handler(CommandHandler("getchatid", get_chat_id))
+    app.add_handler(CommandHandler("translation", set_translation_mode))
+    app.add_handler(CommandHandler("transcription", set_transcription_mode))
+    app.add_handler(CommandHandler("detect", toggle_detection))
+    app.add_handler(CommandHandler("reply", toggle_reply))
+    app.add_handler(CommandHandler("voice", set_voice_type))
+    app.add_handler(CommandHandler("help", show_commands))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+
+    logger.info("Handlers added")
+    return app
 
 @fastapi_app.post(WEBHOOK_PATH)
 async def webhook_handler(request: Request):
@@ -114,14 +111,19 @@ def handle_background_task_result(task):
     except Exception as e:
         logger.error(f"Background task failed: {e}", exc_info=True)
 
-
 @fastapi_app.get("/")
 async def health_check():
     return {"status": "ok"}
 
+def main():
+    try:
+        logger.info("Starting application initialization...")
+        # ... rest of your main function ...
+
+    except Exception as e:
+        logger.critical("Fatal error: %s", e, exc_info=True)
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
-    if RUN_MODE == "webhook":
-        uvicorn.run(fastapi_app, host="0.0.0.0", port=8080)
-    else:
-        asyncio.run(create_application().run_polling())
+    main()

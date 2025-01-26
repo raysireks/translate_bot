@@ -10,7 +10,7 @@ import logging
 from types import MappingProxyType
 
 from app.service.audio_transcription import TranscriptionMode, WhisperHandler
-from app.service.pht import generate_tts
+from app.service.pht import PHT
 from app.service.anthropic import AnthropicService
 
 logger = logging.getLogger(__name__)
