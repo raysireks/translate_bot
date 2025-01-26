@@ -31,17 +31,21 @@ class PHT:
 
     async def text_to_speech(self, audio: bytearray, text: str) -> bytearray:
         try:
+            logger.info(f"Starting TTS generation for text: {text[:100]}...")
             audio_bytes = bytes(audio)
             
             # Get gender
+            logger.info("Detecting gender from audio...")
             result = await asyncio.to_thread(
                 self.hf_client.audio_classification,
                 audio=audio_bytes,
                 model="alefiury/wav2vec2-large-xlsr-53-gender-recognition-librispeech"
             )
             gender = result[0]["label"]
+            logger.info(f"Detected gender: {gender}")
             
             # Get emotion and prosody
+            logger.info("Detecting emotion...")
             emotion_task = asyncio.create_task(asyncio.to_thread(
                 self.hf_client.audio_classification,
                 audio=audio_bytes,
@@ -49,6 +53,7 @@ class PHT:
             ))
             
             # Process speech rate
+            logger.info("Processing speech rate...")
             y, sr = await asyncio.to_thread(librosa.load, io.BytesIO(audio_bytes))
             onset_env = await asyncio.to_thread(librosa.onset.onset_strength, y=y, sr=sr)
             tempo = await asyncio.to_thread(
@@ -56,11 +61,15 @@ class PHT:
             )
             speed = tempo / 135.0  # Normalize around typical speech tempo
             speed = max(0.5, min(2.0, speed))
+            logger.info(f"Calculated speech speed: {speed}")
             
             emotion_result = await emotion_task
+            logger.info(f"Detected emotion: {emotion_result}")
             
             # Get voice settings
             lang = detect(text)
+            logger.info(f"Detected language for TTS: {lang}")
+            
             voice_settings = {
                 "es": {
                     "male": {
@@ -85,6 +94,7 @@ class PHT:
             }
             
             settings = voice_settings[lang][gender]
+            logger.info(f"Using voice settings: {settings}")
             
             options = TTSOptions(
                 voice=settings["voice"],
@@ -92,12 +102,12 @@ class PHT:
                 speed=speed
             )
 
-            logger.info("Starting TTS generation")
+            logger.info("Starting TTS API call...")
             audio_data = bytearray()
             for chunk in self.pht_client.tts(text, options, voice_engine='Play3.0-mini-http'):
                 audio_data.extend(chunk)
 
-            logger.info("Succeeded TTS generation")
+            logger.info(f"Successfully generated TTS audio, size: {len(audio_data)} bytes")
             return audio_data
 
         except Exception as e:

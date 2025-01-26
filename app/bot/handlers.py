@@ -95,16 +95,26 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await send_message(update, context, f"{translation} ({transcribed_text})")
                     
                     # Generate TTS response
+                    logger.info("Initializing PHT client for TTS")
                     pht_client = PHT()
-                    tts_response = await pht_client.text_to_speech(voice_data, translation)
-                    audio_bytes = bytes(tts_response)     
-                    audio_buffer = io.BytesIO(audio_bytes)
-                    audio_buffer.name = "audio.mp3" 
-                    
-                    await context.bot.send_voice(
-                        update.message.chat_id, 
-                        audio_buffer
-                    )
+                    try:
+                        logger.info("Starting TTS generation")
+                        tts_response = await pht_client.text_to_speech(voice_data, translation)
+                        logger.info("TTS generation successful")
+                        
+                        audio_bytes = bytes(tts_response)     
+                        audio_buffer = io.BytesIO(audio_bytes)
+                        audio_buffer.name = "audio.mp3" 
+                        
+                        logger.info("Sending voice message back to user")
+                        await context.bot.send_voice(
+                            update.message.chat_id, 
+                            audio_buffer
+                        )
+                        logger.info("Voice message sent successfully")
+                    except Exception as e:
+                        logger.error(f"TTS generation failed: {str(e)}", exc_info=True)
+                        await send_message(update, context, "Sorry, I couldn't generate the voice response.")
                 else:
                     logger.warning("Empty translation from Anthropic")
                     asyncio.create_task(
