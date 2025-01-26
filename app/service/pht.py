@@ -45,26 +45,26 @@ class PHT:
             logger.info(f"Detected gender: {gender}")
             
             # Get emotion and prosody
-            logger.info("Detecting emotion...")
-            emotion_task = asyncio.create_task(asyncio.to_thread(
-                self.hf_client.audio_classification,
-                audio=audio_bytes,
-                model="ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
-            ))
+            # logger.info("Detecting emotion...")
+            # emotion_task = asyncio.create_task(asyncio.to_thread(
+            #     self.hf_client.audio_classification,
+            #     audio=audio_bytes,
+            #     model="ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+            # ))
             
             # Process speech rate
-            logger.info("Processing speech rate...")
-            y, sr = await asyncio.to_thread(librosa.load, io.BytesIO(audio_bytes))
-            onset_env = await asyncio.to_thread(librosa.onset.onset_strength, y=y, sr=sr)
-            tempo = await asyncio.to_thread(
-                lambda: librosa.beat.tempo(onset_envelope=onset_env, sr=sr)[0]
-            )
-            speed = tempo / 135.0  # Normalize around typical speech tempo
-            speed = max(0.5, min(2.0, speed))
-            logger.info(f"Calculated speech speed: {speed}")
+            # logger.info("Processing speech rate...")
+            # y, sr = await asyncio.to_thread(librosa.load, io.BytesIO(audio_bytes))
+            # onset_env = await asyncio.to_thread(librosa.onset.onset_strength, y=y, sr=sr)
+            # tempo = await asyncio.to_thread(
+            #     lambda: librosa.beat.tempo(onset_envelope=onset_env, sr=sr)[0]
+            # )
+            # speed = tempo / 135.0  # Normalize around typical speech tempo
+            # speed = max(0.5, min(2.0, speed))
+            # logger.info(f"Calculated speech speed: {speed}")
             
-            emotion_result = await emotion_task
-            logger.info(f"Detected emotion: {emotion_result}")
+            # emotion_result = await emotion_task
+            # logger.info(f"Detected emotion: {emotion_result}")
             
             # Get voice settings
             lang = detect(text)
@@ -99,7 +99,6 @@ class PHT:
             options = TTSOptions(
                 voice=settings["voice"],
                 language=settings["language"],
-                speed=speed
             )
 
             logger.info("Starting TTS API call...")
