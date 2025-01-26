@@ -4,10 +4,11 @@ import os
 import pickle
 from pathlib import Path
 from types import MappingProxyType
+import sys
 
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from app.bot.handlers import (
     set_transcription_mode,
@@ -118,12 +119,19 @@ async def health_check():
 def main():
     try:
         logger.info("Starting application initialization...")
-        # ... rest of your main function ...
-
+        
+        if RUN_MODE == "webhook":
+            logger.info("Starting in webhook mode")
+            import uvicorn
+            uvicorn.run(fastapi_app, host="0.0.0.0", port=8080)
+        else:
+            logger.info("Starting in polling mode")
+            asyncio.run(create_application().run_polling())
+            
     except Exception as e:
-        logger.critical("Fatal error: %s", e, exc_info=True)
-        traceback.print_exc()
+        logger.error("Fatal error: %s", e, exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":
+    logger.info("Starting main...")
     main()
