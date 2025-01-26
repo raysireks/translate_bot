@@ -10,7 +10,7 @@ import logging
 from types import MappingProxyType
 
 from app.service.audio_transcription import TranscriptionMode, WhisperHandler
-from app.service.pht import PHT
+from app.service.pht import PHT, generate_tts
 from app.service.anthropic import AnthropicService
 
 logger = logging.getLogger(__name__)
@@ -92,12 +92,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if translation:
                     logger.info("Sending translation to user")
-                    asyncio.create_task(
-                        send_message(update, context, f"{translation} ({transcribed_text})")
-                    )
+                    await send_message(update, context, f"{translation} ({transcribed_text})")
                     
                     # Generate TTS response
-                    tts_response = await generate_tts(voice_data, translation)
+                    pht_client = PHT()
+                    tts_response = await pht_client.text_to_speech(voice_data, translation)
                     audio_bytes = bytes(tts_response)     
                     audio_buffer = io.BytesIO(audio_bytes)
                     audio_buffer.name = "audio.mp3" 
