@@ -1,8 +1,9 @@
 import logging
 from app.config import ANTHROPIC_API_KEY
 from anthropic.types import TextBlock, Message
-from anthropic import Anthropic # Import the Anthropic library
-from app.service.prompts.prompts import PROMPTS  # Import the prompts
+from anthropic import Anthropic
+from app.service.prompts.prompts import PROMPTS
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +23,7 @@ class AnthropicService:
         self.user_gender = user_gender
         self.recipient_gender = recipient_gender
 
-    def get_response(self, prompt_key: str = "translate", user_input: str = "") -> str:
+    async def get_response(self, prompt_key: str = "translate", user_input: str = "") -> str:
         system_prompt = PROMPTS.get(prompt_key, "").format(
             locale=self.locale,
             language=self.language,
@@ -36,8 +37,9 @@ class AnthropicService:
             return ""
 
         try:
-            # Use the Anthropic client to get a response
-            result: Message = self.client.messages.create(
+            # Run the API call in a thread pool since it's blocking
+            result: Message = await asyncio.to_thread(
+                self.client.messages.create,
                 max_tokens=150,
                 model="claude-3-5-sonnet-20240620",
                 system=system_prompt,
@@ -48,7 +50,6 @@ class AnthropicService:
                         "content": user_input
                     }
                 ]
-
             )
             content: list[TextBlock] = result.content
             return content[0].text

@@ -44,20 +44,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        logger.info("Getting response from Anthropic service")
         response = await anthropic_service.get_response(user_input=update.message.text)
+        logger.info(f"Got response from Anthropic: {response[:100]}...")
+        
         if response:
             logger.info("Sending response to user")
-            asyncio.create_task(send_message(update, context, response))
+            await send_message(update, context, response)
         else:
             logger.warning("Empty response from Anthropic")
-            asyncio.create_task(send_message(update, context, 
+            await send_message(update, context, 
                 "Sorry, I received an empty response. Please try again."
-            ))
+            )
     except Exception as e:
         logger.error(f"Error in handle_message: {str(e)}", exc_info=True)
-        asyncio.create_task(send_message(update, context, 
-            "Sorry, I encountered an error: {}".format(str(e))
-        ))
+        await send_message(update, context, 
+            f"Sorry, I encountered an error: {str(e)}"
+        )
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Handling voice message from user {update.message.from_user.id}")
