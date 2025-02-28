@@ -6,7 +6,7 @@ ALLOWED_GROUP_ID = int(os.getenv('ALLOWED_GROUP_ID', 0))
 ADMIN_USER_ID = int(os.getenv('ADMIN_USER_ID', 0))
 WEBHOOK_PATH = os.getenv('WEBHOOK_PATH', '/webhook')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-RUN_MODE = os.getenv('RUN_MODE', 'webhook')
+RUN_MODE = os.getenv('RUN_MODE', 'webhook')  # Options: "webhook", "polling", "rest"
 
 # poe API credentials
 POE_API_KEY = os.getenv('POE_API_KEY')

@@ -1,0 +1,53 @@
+<div class="container">
+  <header>
+    <h1>Universal Translator</h1>
+  </header>
+
+  <main>
+    <div class="translation-container">
+      <div class="input-section">
+        <h2>Input</h2>
+        <textarea 
+          [(ngModel)]="inputText" 
+          placeholder="Enter text to translate..."
+          [disabled]="isLoading"
+          rows="5"
+        ></textarea>
+        
+        <div class="actions">
+          <button 
+            (click)="translateText()" 
+            [disabled]="isLoading || !inputText.trim()"
+            class="translate-btn">
+            Translate
+          </button>
+          
+          <button 
+            (click)="toggleRecording()" 
+            [disabled]="isLoading"
+            [class.recording]="audioRecordingService.recording$ | async"
+            class="record-btn">
+            {{ (audioRecordingService.recording$ | async) ? 'Stop Recording' : 'Start Recording' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="output-section">
+        <h2>Translation</h2>
+        <div class="translation-output" [class.loading]="isLoading">
+          <div *ngIf="isLoading" class="loader"></div>
+          <textarea 
+            [value]="translatedText" 
+            placeholder="Translation will appear here..."
+            readonly
+            rows="5"
+          ></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="errorMessage" class="error-message">
+      {{ errorMessage }}
+    </div>
+  </main>
+</div>
