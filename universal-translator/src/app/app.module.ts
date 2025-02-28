@@ -7,6 +7,7 @@ import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { TranslationService } from './services/translation.service';
 import { AudioRecordingService } from './services/audio-recording.service';
+import { WebSocketService } from './services/websocket.service';
 
 @NgModule({
   declarations: [
@@ -19,7 +20,7 @@ import { AudioRecordingService } from './services/audio-recording.service';
     HttpClientModule,
     AppRoutingModule
   ],
-  providers: [TranslationService, AudioRecordingService],
+  providers: [TranslationService, AudioRecordingService, WebSocketService],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

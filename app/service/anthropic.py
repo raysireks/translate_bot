@@ -37,23 +37,45 @@ class AnthropicService:
             return ""
 
         try:
-            # Run the API call in a thread pool since it's blocking
-            result: Message = await asyncio.to_thread(
-                self.client.messages.create,
-                max_tokens=150,
-                model="claude-3-5-sonnet-20240620",
-                system=system_prompt,
-                temperature=0.2,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": user_input
-                    }
-                ]
-            )
-            content: list[TextBlock] = result.content
-            return content[0].text
+            # Try with the primary model
+            try:
+                # Run the API call in a thread pool since it's blocking
+                result: Message = await asyncio.to_thread(
+                    self.client.messages.create,
+                    max_tokens=150,
+                    model="claude-3-5-sonnet-20240620",
+                    system=system_prompt,
+                    temperature=0.2,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_input
+                        }
+                    ]
+                )
+                content: list[TextBlock] = result.content
+                return content[0].text
+            except Exception as primary_model_error:
+                # Log the primary model error
+                logger.warning(f"Primary model failed: {str(primary_model_error)}. Trying fallback model.")
+                
+                # Try with the fallback model
+                result: Message = await asyncio.to_thread(
+                    self.client.messages.create,
+                    max_tokens=150,
+                    model="claude-3-5-sonnet-20241022",
+                    system=system_prompt,
+                    temperature=0.2,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": user_input
+                        }
+                    ]
+                )
+                content: list[TextBlock] = result.content
+                return content[0].text
         except Exception as e:
-            logger.error(f"Error getting response from Anthropics API: {str(e)}")
+            logger.error(f"Error getting response from Anthropics API (both models failed): {str(e)}")
             return ""
 

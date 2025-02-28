@@ -1,6 +1,7 @@
-import { Component, Inject, ViewChild, ElementRef } from '@angular/core';
-import { TranslationService, TranslationRequest, TranslationResponse } from './services/translation.service';
-import { AudioRecordingService } from './services/audio-recording.service';
+import { Component, Inject, ViewChild, ElementRef, OnInit, OnDestroy } from '@angular/core';
+import { TranslationService, TranslationRequest, TranslationResponse, StreamedTranslationResponse } from './services/translation.service';
+import { AudioRecordingService, RecordingMode } from './services/audio-recording.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -8,7 +9,7 @@ import { AudioRecordingService } from './services/audio-recording.service';
   styleUrls: ['./app.component.css'],
   standalone: false
 })
-export class AppComponent {
+export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('audioPlayer') audioPlayer!: ElementRef<HTMLAudioElement>;
 
   inputText = '';
@@ -16,11 +17,138 @@ export class AppComponent {
   isLoading = false;
   errorMessage = '';
   audioUrl: string | null = null;
+  
+  // Streaming related properties
+  isStreamingMode = false;
+  streamedTranscriptions: StreamedTranslationResponse[] = [];
+  private streamingSubscription: Subscription | null = null;
 
   constructor(
-    @Inject(TranslationService) private translationService: TranslationService,
+    @Inject(TranslationService) public translationService: TranslationService,
     @Inject(AudioRecordingService) public audioRecordingService: AudioRecordingService
   ) {}
+
+  ngOnInit() {
+    // Initialize with batch mode by default
+    this.audioRecordingService.setRecordingMode(RecordingMode.BATCH);
+  }
+
+  toggleStreamingMode() {
+    this.isStreamingMode = !this.isStreamingMode;
+    this.audioRecordingService.setRecordingMode(
+      this.isStreamingMode ? RecordingMode.STREAMING : RecordingMode.BATCH
+    );
+    
+    if (this.isStreamingMode) {
+      // Set up streaming subscription if we're in streaming mode
+      this.setupStreamingSubscription();
+    } else if (this.streamingSubscription) {
+      // Clean up subscription if we're switching back to batch mode
+      this.streamingSubscription.unsubscribe();
+      this.streamingSubscription = null;
+    }
+  }
+
+  reconnectWebSocket() {
+    this.errorMessage = '';
+    this.translationService.connectWebSocket();
+    // Try to set up streaming subscription again
+    this.setupStreamingSubscription();
+  }
+
+  /**
+   * Test the WebSocket connection to the server
+   * This attempts a new connection and logs detailed information
+   * for debugging purposes
+   */
+  testWebSocketConnection() {
+    console.log('Testing WebSocket connection...');
+    
+    // First disconnect any existing connection
+    this.translationService.disconnectWebSocket();
+    
+    // Clear any existing error message
+    this.errorMessage = '';
+    
+    // Log connection info
+    console.log('WebSocket URL:', this.translationService.getWebSocketUrl());
+    
+    // Try to reconnect
+    this.translationService.connectWebSocket();
+    
+    // Set up a temporary timeout to check connection status
+    setTimeout(() => {
+      const isConnected = this.translationService.isWebSocketConnected();
+      console.log('Connection status after attempt:', isConnected ? 'Connected' : 'Disconnected');
+      
+      if (!isConnected) {
+        this.errorMessage = 'WebSocket connection failed. Check console for details.';
+      } else {
+        // Show success message
+        const prevError = this.errorMessage;
+        this.errorMessage = 'WebSocket connection successful!';
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          if (this.errorMessage === 'WebSocket connection successful!') {
+            this.errorMessage = prevError;
+          }
+        }, 3000);
+      }
+    }, 1000);
+  }
+
+  private setupStreamingSubscription() {
+    // Unsubscribe if we already have an active subscription
+    if (this.streamingSubscription) {
+      this.streamingSubscription.unsubscribe();
+    }
+    
+    // Set up new subscription
+    this.streamingSubscription = this.translationService.getStreamingResponses().subscribe({
+      next: (response: StreamedTranslationResponse) => {
+        // Add new transcription to the list
+        if (response.transcribed_text || response.translated_text) {
+          this.streamedTranscriptions.push(response);
+          
+          // Update the display with the latest transcription/translation
+          if (response.transcribed_text) {
+            this.inputText = response.transcribed_text;
+          }
+          if (response.translated_text) {
+            this.translatedText = response.translated_text;
+          }
+        }
+        
+        // Play audio if present
+        if (response.audio) {
+          this.playAudioFromBlob(response.audio);
+        }
+      },
+      error: (error) => {
+        console.error('Streaming error:', error);
+        this.errorMessage = `Streaming error: ${error}`;
+      }
+    });
+  }
+
+  private playAudioFromBlob(audioBlob: Blob) {
+    // Revoke previous URL if it exists
+    if (this.audioUrl) {
+      URL.revokeObjectURL(this.audioUrl);
+    }
+    
+    // Create a new URL for the audio blob
+    this.audioUrl = URL.createObjectURL(audioBlob);
+    
+    // Play the audio
+    setTimeout(() => {
+      if (this.audioPlayer?.nativeElement) {
+        this.audioPlayer.nativeElement.play()
+          .catch(err => console.warn('Auto-play failed:', err));
+      }
+    });
+  }
 
   translateText() {
     if (!this.inputText.trim()) {
@@ -58,18 +186,36 @@ export class AppComponent {
 
   startRecording() {
     this.errorMessage = '';
-    this.audioRecordingService.startRecording()
-      .catch(error => {
-        console.error('Recording error:', error);
-        this.errorMessage = 'Error accessing microphone. Please check permissions.';
-      });
+    
+    // Clear any previous streaming results if we're in streaming mode
+    if (this.isStreamingMode) {
+      this.streamedTranscriptions = [];
+      this.setupStreamingSubscription();
+    }
+    
+    this.audioRecordingService.startRecording(
+      this.isStreamingMode ? RecordingMode.STREAMING : RecordingMode.BATCH
+    )
+    .catch(error => {
+      console.error('Recording error:', error);
+      this.errorMessage = 'Error accessing microphone. Please check permissions.';
+    });
   }
 
   stopRecording() {
-    this.isLoading = true;
+    // Only show loading indicator in batch mode since streaming already 
+    // processes results incrementally
+    if (!this.isStreamingMode) {
+      this.isLoading = true;
+    }
+    
     this.audioRecordingService.stopRecording()
       .then(audioBlob => {
-        this.translateAudio(audioBlob);
+        // In streaming mode, we don't need to send the audio blob for processing
+        // since it's already been streamed and processed
+        if (!this.isStreamingMode) {
+          this.translateAudio(audioBlob);
+        }
       })
       .catch(error => {
         console.error('Error stopping recording:', error);
@@ -79,6 +225,7 @@ export class AppComponent {
   }
 
   translateAudio(audioBlob: Blob) {
+    // Only relevant in batch mode
     this.isLoading = true;
     this.errorMessage = '';
     this.audioUrl = null;
@@ -93,14 +240,7 @@ export class AppComponent {
 
         if (response.body) {
           const audioBlob = new Blob([response.body], { type: 'audio/mp3' });
-          this.audioUrl = URL.createObjectURL(audioBlob);
-          
-          setTimeout(() => {
-            if (this.audioPlayer?.nativeElement) {
-              this.audioPlayer.nativeElement.play()
-                .catch(err => console.warn('Auto-play failed:', err));
-            }
-          });
+          this.playAudioFromBlob(audioBlob);
         }
 
         this.isLoading = false;
@@ -116,6 +256,10 @@ export class AppComponent {
   ngOnDestroy() {
     if (this.audioUrl) {
       URL.revokeObjectURL(this.audioUrl);
+    }
+    
+    if (this.streamingSubscription) {
+      this.streamingSubscription.unsubscribe();
     }
   }
 }

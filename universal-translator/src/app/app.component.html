@@ -1,9 +1,41 @@
 <div class="container">
   <header>
     <h1>Universal Translator</h1>
+    <div class="mode-selector">
+      <label>
+        <input type="checkbox" [checked]="isStreamingMode" (change)="toggleStreamingMode()">
+        Streaming Mode
+      </label>
+      <span class="mode-description" *ngIf="isStreamingMode">
+        Real-time streaming mode is active - translations will appear as you speak
+      </span>
+      <span class="mode-description" *ngIf="!isStreamingMode">
+        Batch mode is active - translations will appear after you finish speaking
+      </span>
+      
+      <!-- Connection status indicator -->
+      <span *ngIf="isStreamingMode" class="connection-status" 
+            [class.connected]="translationService.isWebSocketConnected()"
+            [class.disconnected]="!translationService.isWebSocketConnected()">
+        {{ translationService.isWebSocketConnected() ? 'Connected' : 'Disconnected' }}
+      </span>
+    </div>
   </header>
 
   <main>
+    <!-- WebSocket debug information (only visible when streaming mode is active) -->
+    <div *ngIf="isStreamingMode" class="debug-panel">
+      <div class="debug-info">
+        <strong>WebSocket URL:</strong> {{ translationService.getWebSocketUrl() }}
+      </div>
+      <button (click)="reconnectWebSocket()" class="debug-btn">
+        Reconnect WebSocket
+      </button>
+      <button (click)="testWebSocketConnection()" class="debug-btn">
+        Test Connection
+      </button>
+    </div>
+
     <div class="translation-container">
       <div class="input-section">
         <h2>Input</h2>
@@ -24,7 +56,7 @@
           
           <button 
             (click)="toggleRecording()" 
-            [disabled]="isLoading"
+            [disabled]="isLoading || (isStreamingMode && !translationService.isWebSocketConnected())"
             [class.recording]="audioRecordingService.recording$ | async"
             class="record-btn">
             {{ (audioRecordingService.recording$ | async) ? 'Stop Recording' : 'Start Recording' }}
@@ -53,8 +85,26 @@
       </div>
     </div>
 
+    <div *ngIf="isStreamingMode && streamedTranscriptions.length > 0" class="streaming-history">
+      <h3>Streaming History</h3>
+      <div class="streaming-entry" *ngFor="let entry of streamedTranscriptions; let i = index">
+        <div *ngIf="entry.transcribed_text" class="transcription">
+          <strong>Transcribed:</strong> {{ entry.transcribed_text }}
+        </div>
+        <div *ngIf="entry.translated_text" class="translation">
+          <strong>Translated:</strong> {{ entry.translated_text }}
+        </div>
+        <hr *ngIf="i < streamedTranscriptions.length - 1">
+      </div>
+    </div>
+
     <div *ngIf="errorMessage" class="error-message">
-      {{ errorMessage }}
+      <p>{{ errorMessage }}</p>
+      <button *ngIf="isStreamingMode && !translationService.isWebSocketConnected()" 
+              (click)="reconnectWebSocket()" 
+              class="reconnect-btn">
+        Reconnect WebSocket
+      </button>
     </div>
   </main>
 </div>
