@@ -1,4 +1,4 @@
-import { Component, Inject } from '@angular/core';
+import { Component, Inject, ViewChild, ElementRef } from '@angular/core';
 import { TranslationService, TranslationRequest, TranslationResponse } from './services/translation.service';
 import { AudioRecordingService } from './services/audio-recording.service';
 
@@ -9,10 +9,13 @@ import { AudioRecordingService } from './services/audio-recording.service';
   standalone: false
 })
 export class AppComponent {
+  @ViewChild('audioPlayer') audioPlayer!: ElementRef<HTMLAudioElement>;
+
   inputText = '';
   translatedText = '';
   isLoading = false;
   errorMessage = '';
+  audioUrl: string | null = null;
 
   constructor(
     @Inject(TranslationService) private translationService: TranslationService,
@@ -76,10 +79,30 @@ export class AppComponent {
   }
 
   translateAudio(audioBlob: Blob) {
+    this.isLoading = true;
+    this.errorMessage = '';
+    this.audioUrl = null;
+
     this.translationService.translateAudio(audioBlob).subscribe({
-      next: (response: TranslationResponse) => {
-        this.inputText = response.original_text;
-        this.translatedText = response.translated_text;
+      next: (response) => {
+        const transcribedText = decodeURIComponent(response.headers.get('X-Transcribed-Text') || '');
+        const translatedText = decodeURIComponent(response.headers.get('X-Translated-Text') || '');
+        
+        this.inputText = transcribedText;
+        this.translatedText = translatedText;
+
+        if (response.body) {
+          const audioBlob = new Blob([response.body], { type: 'audio/mp3' });
+          this.audioUrl = URL.createObjectURL(audioBlob);
+          
+          setTimeout(() => {
+            if (this.audioPlayer?.nativeElement) {
+              this.audioPlayer.nativeElement.play()
+                .catch(err => console.warn('Auto-play failed:', err));
+            }
+          });
+        }
+
         this.isLoading = false;
       },
       error: (error) => {
@@ -88,5 +111,11 @@ export class AppComponent {
         this.isLoading = false;
       }
     });
+  }
+
+  ngOnDestroy() {
+    if (this.audioUrl) {
+      URL.revokeObjectURL(this.audioUrl);
+    }
   }
 }

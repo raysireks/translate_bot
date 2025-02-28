@@ -27,11 +27,14 @@ export class TranslationService {
     return this.http.post<TranslationResponse>(`${this.apiUrl}/translate/text`, request);
   }
 
-  translateAudio(audioBlob: Blob): Observable<TranslationResponse> {
+  translateAudio(audioBlob: Blob): Observable<any> {
     const formData = new FormData();
     formData.append('audio_data', audioBlob);
-    formData.append('detect_language', 'true');
+    formData.append('return_audio', 'true');
     
-    return this.http.post<TranslationResponse>(`${this.apiUrl}/translate/audio`, formData);
+    return this.http.post(`${this.apiUrl}/translate/audio`, formData, {
+      responseType: 'blob',
+      observe: 'response'
+    });
   }
 } 

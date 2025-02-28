@@ -43,6 +43,13 @@
             rows="5"
           ></textarea>
         </div>
+
+        <div class="audio-output" *ngIf="audioUrl">
+          <h3>Generated Audio</h3>
+          <audio #audioPlayer controls [src]="audioUrl">
+            Your browser does not support the audio element.
+          </audio>
+        </div>
       </div>
     </div>
 
