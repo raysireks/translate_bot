@@ -69,6 +69,8 @@ class PHT:
             # Get voice settings
             lang = detect(text)
             logger.info(f"Detected language for TTS: {lang}")
+            if lang not in ["es", "en"]:
+                lang = "es"
             
             voice_settings = {
                 "es": {
