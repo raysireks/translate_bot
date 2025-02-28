@@ -11,51 +11,97 @@ export enum RecordingMode {
   providedIn: 'root'
 })
 export class AudioRecordingService {
+  private mediaRecorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
-  private recorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
+  private recordingSubject = new BehaviorSubject<boolean>(false);
   private recordingMode: RecordingMode = RecordingMode.BATCH;
+  
+  // Add the missing audioChunks property
+  private audioChunks: Blob[] = [];
+  
+  // New properties for device selection
+  private availableDevicesSubject = new BehaviorSubject<MediaDeviceInfo[]>([]);
+  private selectedDeviceId: string | null = null;
   
   // For raw audio processing
   private audioContext: AudioContext | null = null;
   private scriptProcessor: ScriptProcessorNode | null = null;
   private audioInput: MediaStreamAudioSourceNode | null = null;
   
-  private recordingSubject = new BehaviorSubject<boolean>(false);
-  public recording$ = this.recordingSubject.asObservable();
-
   constructor(private webSocketService: WebSocketService) {}
 
-  setRecordingMode(mode: RecordingMode): void {
-    this.recordingMode = mode;
+  // Public observable of recording state
+  public get recording$(): Observable<boolean> {
+    return this.recordingSubject.asObservable();
+  }
+  
+  // New public observable of available devices
+  public get availableDevices$(): Observable<MediaDeviceInfo[]> {
+    return this.availableDevicesSubject.asObservable();
   }
 
-  getRecordingMode(): RecordingMode {
-    return this.recordingMode;
+  public isRecording(): boolean {
+    return this.recordingSubject.value;
   }
 
-  startRecording(mode: RecordingMode = RecordingMode.BATCH): Promise<void> {
+  public setRecordingMode(mode: RecordingMode): void {
     this.recordingMode = mode;
-    
-    if (this.recorder && this.recorder.state === 'recording') {
-      return Promise.resolve();
-    }
-
-    this.audioChunks = [];
-    
-    // Connect to WebSocket if in streaming mode
-    if (this.recordingMode === RecordingMode.STREAMING) {
-      this.webSocketService.connect();
-    }
-    
-    return navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        channelCount: 1,
-        sampleRate: 16000
+  }
+  
+  // New method to get available audio input devices
+  public async loadAvailableDevices(): Promise<void> {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
+      this.availableDevicesSubject.next(audioInputDevices);
+      
+      // If no device is selected yet, select the default one
+      if (!this.selectedDeviceId && audioInputDevices.length > 0) {
+        this.selectedDeviceId = audioInputDevices[0].deviceId;
       }
-    })
-    .then(stream => {
-      this.stream = stream;
+    } catch (error) {
+      console.error('Error loading audio devices:', error);
+    }
+  }
+  
+  // New method to set the selected microphone
+  public setMicrophone(deviceId: string): void {
+    this.selectedDeviceId = deviceId;
+    
+    // If we're currently recording, stop and restart with the new device
+    if (this.isRecording()) {
+      this.stopRecording().then(() => {
+        this.startRecording(this.recordingMode);
+      }).catch(error => {
+        console.error('Error restarting recording with new device:', error);
+      });
+    }
+  }
+
+  public async startRecording(mode: RecordingMode): Promise<void> {
+    if (this.mediaRecorder && this.isRecording()) {
+      console.warn('Recording already in progress');
+      return;
+    }
+
+    try {
+      // Use the selected device if available
+      const constraints: MediaStreamConstraints = {
+        audio: this.selectedDeviceId ? { deviceId: { exact: this.selectedDeviceId } } : true
+      };
+      
+      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      this.mediaRecorder = new MediaRecorder(this.stream);
+      this.recordingSubject.next(true);
+      this.recordingMode = mode;
+
+      this.audioChunks = [];
+      
+      // Connect to WebSocket if in streaming mode
+      if (this.recordingMode === RecordingMode.STREAMING) {
+        this.webSocketService.connect();
+      }
       
       if (this.recordingMode === RecordingMode.BATCH) {
         // For batch mode, continue using MediaRecorder
@@ -64,22 +110,23 @@ export class AudioRecordingService {
           audioBitsPerSecond: 16000
         };
         
-        this.recorder = new MediaRecorder(stream, options);
+        this.mediaRecorder = new MediaRecorder(this.stream, options);
         
-        this.recorder.addEventListener('dataavailable', (event) => {
+        this.mediaRecorder.addEventListener('dataavailable', (event) => {
           if (event.data.size > 0) {
             this.audioChunks.push(event.data);
           }
         });
         
-        this.recorder.start(1000);
+        this.mediaRecorder.start(1000);
       } else {
         // For streaming mode, use ScriptProcessorNode to get raw PCM data
-        this.setupRawAudioProcessing(stream);
+        this.setupRawAudioProcessing(this.stream);
       }
-      
-      this.recordingSubject.next(true);
-    });
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      throw error;
+    }
   }
 
   private setupRawAudioProcessing(stream: MediaStream): void {
@@ -126,18 +173,18 @@ export class AudioRecordingService {
     return new Promise((resolve, reject) => {
       if (this.recordingMode === RecordingMode.BATCH) {
         // Batch mode - stop MediaRecorder
-        if (!this.recorder) {
+        if (!this.mediaRecorder) {
           reject(new Error('No recorder instance found'));
           return;
         }
 
-        this.recorder.addEventListener('stop', () => {
+        this.mediaRecorder.addEventListener('stop', () => {
           const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
           this.cleanupRecording();
           resolve(audioBlob);
         });
 
-        this.recorder.stop();
+        this.mediaRecorder.stop();
       } else {
         // Streaming mode - clean up audio processing nodes
         this.cleanupRecording();
@@ -182,7 +229,7 @@ export class AudioRecordingService {
     }
   }
 
-  isRecording(): boolean {
-    return this.recordingSubject.value;
+  getRecordingMode(): RecordingMode {
+    return this.recordingMode;
   }
 } 

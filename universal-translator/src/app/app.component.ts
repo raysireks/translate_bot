@@ -23,6 +23,14 @@ export class AppComponent implements OnInit, OnDestroy {
   streamedTranscriptions: StreamedTranslationResponse[] = [];
   private streamingSubscription: Subscription | null = null;
 
+  // New properties for device selection
+  audioInputDevices: MediaDeviceInfo[] = [];
+  audioOutputDevices: MediaDeviceInfo[] = [];
+  selectedMicrophoneId: string = '';
+  selectedSpeakerId: string = '';
+  deviceSubscription: Subscription | null = null;
+  showDeviceSelector: boolean = false;
+
   constructor(
     @Inject(TranslationService) public translationService: TranslationService,
     @Inject(AudioRecordingService) public audioRecordingService: AudioRecordingService
@@ -31,6 +39,17 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnInit() {
     // Initialize with batch mode by default
     this.audioRecordingService.setRecordingMode(RecordingMode.BATCH);
+    
+    // Load available audio devices
+    this.loadAudioDevices();
+    
+    // Subscribe to device changes
+    this.deviceSubscription = this.audioRecordingService.availableDevices$.subscribe(devices => {
+      this.audioInputDevices = devices;
+      if (devices.length > 0 && !this.selectedMicrophoneId) {
+        this.selectedMicrophoneId = devices[0].deviceId;
+      }
+    });
   }
 
   toggleStreamingMode() {
@@ -144,6 +163,12 @@ export class AppComponent implements OnInit, OnDestroy {
     // Play the audio
     setTimeout(() => {
       if (this.audioPlayer?.nativeElement) {
+        // Set the output device first
+        if (this.selectedSpeakerId) {
+          this.setAudioOutput(this.selectedSpeakerId);
+        }
+        
+        // Then play the audio
         this.audioPlayer.nativeElement.play()
           .catch(err => console.warn('Auto-play failed:', err));
       }
@@ -253,6 +278,67 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  toggleDeviceSelector() {
+    this.showDeviceSelector = !this.showDeviceSelector;
+    if (this.showDeviceSelector) {
+      this.loadAudioDevices();
+    }
+  }
+  
+  async loadAudioDevices() {
+    try {
+      // Load microphone input devices
+      await this.audioRecordingService.loadAvailableDevices();
+      
+      // Load speaker output devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      this.audioOutputDevices = devices.filter(device => device.kind === 'audiooutput');
+      
+      // Select default output device if none is selected
+      if (this.audioOutputDevices.length > 0 && !this.selectedSpeakerId) {
+        this.selectedSpeakerId = this.audioOutputDevices[0].deviceId;
+      }
+    } catch (error) {
+      console.error('Error loading audio devices:', error);
+      this.errorMessage = 'Could not load audio devices. Please check browser permissions.';
+    }
+  }
+  
+  onMicrophoneChange(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    this.selectedMicrophoneId = select.value;
+    this.audioRecordingService.setMicrophone(this.selectedMicrophoneId);
+  }
+  
+  onSpeakerChange(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    this.selectedSpeakerId = select.value;
+    
+    this.setAudioOutput(this.selectedSpeakerId);
+  }
+
+  // New helper method for setting audio output
+  setAudioOutput(deviceId: string) {
+    // Apply the selected speaker to the audio element if it exists
+    if (this.audioPlayer?.nativeElement) {
+      // Check if setSinkId is supported
+      if ('setSinkId' in HTMLMediaElement.prototype) {
+        // Need to cast to any because TypeScript doesn't recognize setSinkId
+        (this.audioPlayer.nativeElement as any).setSinkId(deviceId)
+          .then(() => {
+            console.log(`Successfully set audio output to device: ${deviceId}`);
+          })
+          .catch((err: any) => {
+            console.error('Error setting audio output device:', err);
+            this.errorMessage = 'Could not set audio output device. Make sure you\'re using a compatible browser.';
+          });
+      } else {
+        console.warn('setSinkId is not supported in this browser');
+        this.errorMessage = 'Your browser doesn\'t support selecting audio output devices.';
+      }
+    }
+  }
+
   ngOnDestroy() {
     if (this.audioUrl) {
       URL.revokeObjectURL(this.audioUrl);
@@ -260,6 +346,9 @@ export class AppComponent implements OnInit, OnDestroy {
     
     if (this.streamingSubscription) {
       this.streamingSubscription.unsubscribe();
+    }
+    if (this.deviceSubscription) {
+      this.deviceSubscription.unsubscribe();
     }
   }
 }

@@ -118,9 +118,11 @@ async def translate_audio(
     try:
         # Read uploaded file as bytes
         voice_data = await audio_data.read()
+        pht_client = PHT()
         
         # Transcribe the audio
         handler = WhisperHandler(TranscriptionMode.HF.value)
+        gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(voice_data)))
         transcribed_text = await handler.transcribe_voice(voice_data)
         logger.info(f"Transcribed text: {transcribed_text}")
         
@@ -144,11 +146,10 @@ async def translate_audio(
         # Generate TTS response if needed
         if return_audio:
             logger.info("Initializing PHT client for TTS")
-            pht_client = PHT()
             
             try:
                 logger.info("Starting TTS generation")
-                tts_response = await pht_client.text_to_speech(voice_data, translation)
+                tts_response = await pht_client.text_to_speech(voice_data, translation, gender_task)
                 logger.info("TTS generation successful")
                 
                 # Return audio with text metadata in headers
@@ -269,6 +270,11 @@ async def websocket_audio_stream(websocket: WebSocket):
                                 
                                 # Transcribe the properly formatted audio
                                 handler = WhisperHandler(TranscriptionMode.HF.value)
+                                
+                                # Start gender detection early in parallel with transcription
+                                pht_client = PHT()
+                                gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(wav_data)))
+                                
                                 transcribed_text = await handler.transcribe_voice(bytearray(wav_data))
                                 
                                 if transcribed_text:
@@ -286,9 +292,8 @@ async def websocket_audio_stream(websocket: WebSocket):
                                     
                                     # Optionally generate TTS for the translation
                                     try:
-                                        pht_client = PHT()
                                         # Use the WAV-formatted audio data instead of the raw PCM data
-                                        tts_response = await pht_client.text_to_speech(bytearray(wav_data), translation)
+                                        tts_response = await pht_client.text_to_speech(bytearray(wav_data), translation, gender_task)
                                         
                                         # Send the audio back to the client
                                         await websocket.send_bytes(bytes(tts_response))

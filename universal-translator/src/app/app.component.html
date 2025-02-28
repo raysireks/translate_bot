@@ -19,6 +19,11 @@
             [class.disconnected]="!translationService.isWebSocketConnected()">
         {{ translationService.isWebSocketConnected() ? 'Connected' : 'Disconnected' }}
       </span>
+      
+      <!-- New device selector button -->
+      <button class="device-selector-btn" (click)="toggleDeviceSelector()">
+        <i class="fa fa-cog"></i> Audio Devices
+      </button>
     </div>
   </header>
 
@@ -107,4 +112,34 @@
       </button>
     </div>
   </main>
+
+  <!-- New device selector panel -->
+  <div class="device-selector-panel" *ngIf="showDeviceSelector">
+    <div class="device-row">
+      <label for="microphone-select">Microphone:</label>
+      <select id="microphone-select" [value]="selectedMicrophoneId" (change)="onMicrophoneChange($event)">
+        <option *ngFor="let device of audioInputDevices" [value]="device.deviceId">
+          {{ device.label || 'Microphone ' + (audioInputDevices.indexOf(device) + 1) }}
+        </option>
+      </select>
+    </div>
+    <div class="device-row">
+      <label for="speaker-select">Speaker:</label>
+      <select id="speaker-select" [value]="selectedSpeakerId" (change)="onSpeakerChange($event)">
+        <option *ngFor="let device of audioOutputDevices" [value]="device.deviceId">
+          {{ device.label || 'Speaker ' + (audioOutputDevices.indexOf(device) + 1) }}
+        </option>
+      </select>
+    </div>
+    <div class="device-info">
+      <p *ngIf="audioInputDevices.length === 0">No microphones detected. Please check your connections.</p>
+      <p *ngIf="audioOutputDevices.length === 0">No speakers detected. Please check your connections.</p>
+      <p class="device-privacy-note">
+        <small>Note: Speaker selection only works in Chrome, Edge, and Opera. Other browsers will use the system default.</small>
+      </p>
+      <p class="device-privacy-note">
+        <small>If device names don't appear, you may need to grant persistent audio permission to this site.</small>
+      </p>
+    </div>
+  </div>
 </div>

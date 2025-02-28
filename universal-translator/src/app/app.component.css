@@ -275,4 +275,62 @@ button {
 .connection-status.disconnected {
   background-color: #f44336;
   color: white;
+}
+
+/* Add these styles to your existing CSS */
+
+.device-selector-btn {
+  margin-left: auto;
+  background-color: #555;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.9rem;
+}
+
+.device-selector-btn:hover {
+  background-color: #444;
+}
+
+.device-selector-panel {
+  margin-top: 10px;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.device-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.device-row label {
+  min-width: 100px;
+  font-weight: bold;
+}
+
+.device-row select {
+  flex: 1;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.device-info {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.device-privacy-note {
+  font-style: italic;
+  margin-top: 10px;
+  color: #888;
 } 

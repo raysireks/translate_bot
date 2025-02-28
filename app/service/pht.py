@@ -28,14 +28,13 @@ class PHT:
             user_id=PLAY_HT_USER_ID,
             api_key=PLAY_HT_API_KEY,
         )
+        self.gender_task = None
 
-    async def text_to_speech(self, audio: bytearray, text: str) -> bytearray:
+    async def detect_gender(self, audio: bytearray):
+        """Detect gender from audio data"""
         try:
-            logger.info(f"Starting TTS generation for text: {text[:100]}...")
+            logger.info("Starting gender detection from audio...")
             audio_bytes = bytes(audio)
-            
-            # Get gender
-            logger.info("Detecting gender from audio...")
             result = await asyncio.to_thread(
                 self.hf_client.audio_classification,
                 audio=audio_bytes,
@@ -43,35 +42,28 @@ class PHT:
             )
             gender = result[0]["label"]
             logger.info(f"Detected gender: {gender}")
+            return gender
+        except Exception as e:
+            logger.error(f"Error during gender detection: {str(e)}", exc_info=True)
+            return None
+
+    async def text_to_speech(self, audio: bytearray, text: str, gender_task=None) -> bytearray:
+        try:
+            logger.info(f"Starting TTS generation for text: {text[:100]}...")
+            audio_bytes = bytes(audio)
             
-            # Get emotion and prosody
-            # logger.info("Detecting emotion...")
-            # emotion_task = asyncio.create_task(asyncio.to_thread(
-            #     self.hf_client.audio_classification,
-            #     audio=audio_bytes,
-            #     model="ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
-            # ))
+            # Use provided gender task or start a new one if not provided
+            if gender_task is None:
+                logger.info("No gender task provided, starting gender detection now...")
+                gender_task = asyncio.create_task(self.detect_gender(audio))
             
-            # Process speech rate
-            # logger.info("Processing speech rate...")
-            # y, sr = await asyncio.to_thread(librosa.load, io.BytesIO(audio_bytes))
-            # onset_env = await asyncio.to_thread(librosa.onset.onset_strength, y=y, sr=sr)
-            # tempo = await asyncio.to_thread(
-            #     lambda: librosa.beat.tempo(onset_envelope=onset_env, sr=sr)[0]
-            # )
-            # speed = tempo / 135.0  # Normalize around typical speech tempo
-            # speed = max(0.5, min(2.0, speed))
-            # logger.info(f"Calculated speech speed: {speed}")
-            
-            # emotion_result = await emotion_task
-            # logger.info(f"Detected emotion: {emotion_result}")
-            
-            # Get voice settings
+            # Get language
             lang = detect(text)
             logger.info(f"Detected language for TTS: {lang}")
             if lang not in ["es", "en"]:
                 lang = "es"
             
+            # Define voice settings
             voice_settings = {
                 "es": {
                     "male": {
@@ -95,6 +87,15 @@ class PHT:
                 }
             }
             
+            # Wait for gender detection to complete
+            logger.info("Waiting for gender detection to complete...")
+            gender = await gender_task
+            if gender is None:
+                logger.warning("Gender detection failed, defaulting to male")
+                gender = "male"
+            logger.info(f"Using gender: {gender}")
+            
+            # Get voice settings based on gender and language
             settings = voice_settings[lang][gender]
             logger.info(f"Using voice settings: {settings}")
             
