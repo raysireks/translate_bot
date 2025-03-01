@@ -20,14 +20,19 @@ export class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectTimeoutId: any = null;
-  private serverUrl = 'ws://localhost:8080/api/v1/ws/stream-audio'; // Default URL
+  private serverUrl: string;
 
   // Observable streams
   public connected$ = this.connected.asObservable();
   public messages$ = this.messageSubject.asObservable();
   public audio$ = this.audioSubject.asObservable();
 
-  constructor() {}
+  constructor() {
+    // Dynamically construct the WebSocket URL based on the current domain
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host; // Includes hostname and port if present
+    this.serverUrl = `${protocol}//${host}/api/v1/ws/stream-audio`;
+  }
 
   /**
    * Set the WebSocket server URL

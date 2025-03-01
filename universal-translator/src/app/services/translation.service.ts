@@ -28,7 +28,7 @@ export interface StreamedTranslationResponse {
 })
 export class TranslationService {
   // API configuration
-  private apiBaseUrl = 'http://localhost:8080';
+  private apiBaseUrl = window.location.origin; // Dynamically get current domain with protocol
   private apiPath = '/api/v1';
   private apiUrl = `${this.apiBaseUrl}${this.apiPath}`;
   

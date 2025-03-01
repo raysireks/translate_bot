@@ -245,7 +245,7 @@ async def websocket_audio_stream(websocket: WebSocket):
                         complete_audio = b"".join(speech_chunks)
                         
                         # Only process if we have enough audio data (to avoid processing very short noises)
-                        if len(complete_audio) > 1000:  # Arbitrary threshold
+                        if len(complete_audio) > 10000:  # Arbitrary threshold
                             try:
                                 # Send status update to client
                                 await websocket.send_json({
