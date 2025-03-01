@@ -13,6 +13,7 @@ import numpy as np
 from collections import deque
 import json
 import wave
+import re
 
 # Create logger for this module
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ async def translate_audio(
         pht_client = PHT()
         
         # Transcribe the audio
-        handler = WhisperHandler(TranscriptionMode.HF.value)
+        handler = WhisperHandler(TranscriptionMode.HF.value, model_name="large")
         gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(voice_data)))
         transcribed_text = await handler.transcribe_voice(voice_data)
         logger.info(f"Transcribed text: {transcribed_text}")
@@ -283,12 +284,32 @@ async def websocket_audio_stream(websocket: WebSocket):
                                     audio_data = await convert_pcm_to_audio_format(bytearray(wav_data))
                                 
                                 # Send the normalized audio to the transcription service
-                                handler = WhisperHandler(TranscriptionMode.HF.value)
+                                handler = WhisperHandler(TranscriptionMode.HF.value, model_name="large")
                                 
                                 transcribed_text = await handler.transcribe_voice(audio_data)
                                 
                                 if transcribed_text:
                                     logger.info(f"Transcribed speech segment: {transcribed_text}")
+                                    
+                                    # Clean text more thoroughly - strip ALL non-alphanumeric characters
+                                    cleaned_text = re.sub(r'[^a-zA-Z\s]', '', transcribed_text.lower()).strip()
+                                    words = cleaned_text.split()
+                                    
+                                    # List of common short phrases we want to process even if they're just 1-2 words
+                                    common_phrases = ["thank you", "gracias"]
+                                    
+                                    # Check if it's a short phrase and not in our exceptions list
+                                    if len(words) <= 1 and not any(phrase in cleaned_text for phrase in common_phrases):
+                                        logger.info(f"Ignoring single word transcription: '{transcribed_text}', cleaned: '{cleaned_text}'")
+                                        await websocket.send_json({
+                                            "type": "status",
+                                            "message": "Ignored single-word transcription (likely noise)"
+                                        })
+                                        # Reset for the next speech segment
+                                        speech_chunks = []
+                                        is_speech_active = False
+                                        # Skip further processing
+                                        continue
                                     
                                     # Translate the transcribed text
                                     translation = await anthropic_service.get_response(user_input=transcribed_text)
