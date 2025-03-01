@@ -295,15 +295,30 @@ async def websocket_audio_stream(websocket: WebSocket):
                                     cleaned_text = re.sub(r'[^a-zA-Z\s]', '', transcribed_text.lower()).strip()
                                     words = cleaned_text.split()
                                     
-                                    # List of common short phrases we want to process even if they're just 1-2 words
+                                    # List of common short phrases we want to FILTER OUT
                                     common_phrases = ["thank you", "gracias"]
                                     
-                                    # Check if it's a short phrase and not in our exceptions list
-                                    if len(words) <= 1 and not any(phrase in cleaned_text for phrase in common_phrases):
-                                        logger.info(f"Ignoring single word transcription: '{transcribed_text}', cleaned: '{cleaned_text}'")
+                                    # Check if it's a common phrase we want to ignore
+                                    is_common_phrase = any(re.search(r'\b' + re.escape(phrase) + r'\b', cleaned_text) for phrase in common_phrases)
+                                    
+                                    # Check for highly repetitive content
+                                    is_repetitive = False
+                                    if len(words) >= 10:  # Only check longer transcriptions
+                                        # Count unique words
+                                        unique_words = set(words)
+                                        # Calculate ratio of unique words to total words
+                                        uniqueness_ratio = len(unique_words) / len(words)
+                                        
+                                        # If less than 20% of words are unique, consider it repetitive
+                                        if uniqueness_ratio < 0.2:
+                                            is_repetitive = True
+                                            logger.info(f"Detected repetitive content with uniqueness ratio: {uniqueness_ratio:.2f}")
+                                    
+                                    if len(words) <= 1 or is_common_phrase or is_repetitive:
+                                        logger.info(f"Ignoring transcription: '{transcribed_text}', cleaned: '{cleaned_text}'")
                                         await websocket.send_json({
                                             "type": "status",
-                                            "message": "Ignored single-word transcription (likely noise)"
+                                            "message": "Ignored transcription (single word, filtered phrase, or repetitive content)"
                                         })
                                         # Reset for the next speech segment
                                         speech_chunks = []
