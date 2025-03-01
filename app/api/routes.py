@@ -268,14 +268,23 @@ async def websocket_audio_stream(websocket: WebSocket):
                                 wav_buffer.seek(0)
                                 wav_data = wav_buffer.read()
                                 
-                                # Transcribe the properly formatted audio
-                                handler = WhisperHandler(TranscriptionMode.HF.value)
-                                
                                 # Start gender detection early in parallel with transcription
                                 pht_client = PHT()
                                 gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(wav_data)))
                                 
-                                transcribed_text = await handler.transcribe_voice(bytearray(wav_data))
+                                # Check and normalize the audio format
+                                if wav_data.startswith(b'RIFF'):
+                                    logger.info("Detected WAV format audio data from client")
+                                    # WAV format - keep as is, the transcription service can handle it
+                                    audio_data = bytearray(wav_data)
+                                else:
+                                    logger.info("Detected raw PCM format audio data from client")
+                                    # Convert raw PCM to a format the transcription service can handle
+                                    audio_data = await convert_pcm_to_audio_format(bytearray(wav_data))
+                                
+                                # Send the normalized audio to the transcription service
+                                handler = WhisperHandler(TranscriptionMode.HF.value)
+                                transcribed_text = await handler.transcribe_voice(audio_data)
                                 
                                 if transcribed_text:
                                     logger.info(f"Transcribed speech segment: {transcribed_text}")
@@ -337,4 +346,34 @@ async def websocket_audio_stream(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error in WebSocket connection: {str(e)}", exc_info=True)
         manager.disconnect(websocket)
+
+async def convert_pcm_to_audio_format(pcm_data: bytearray) -> bytearray:
+    """Convert raw PCM audio data to WAV format."""
+    logger.info(f"Converting {len(pcm_data)} bytes of PCM data to WAV format")
+    try:
+        # Process the PCM data asynchronously to avoid blocking
+        return await asyncio.to_thread(_create_wav_from_pcm, pcm_data)
+    except Exception as e:
+        logger.error(f"Error converting PCM to WAV: {str(e)}", exc_info=True)
+        # Return the original data if conversion fails
+        return pcm_data
+
+def _create_wav_from_pcm(pcm_data: bytearray) -> bytearray:
+    """Create a WAV file from PCM data (synchronous function)."""
+    # Assume 16-bit mono PCM at 16kHz (adjust parameters if your audio differs)
+    sample_rate = 16000
+    channels = 1
+    sample_width = 2  # 16-bit
+
+    import wave
+    import io
+    
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, 'wb') as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_data)
+    
+    return bytearray(wav_buffer.getvalue())
 

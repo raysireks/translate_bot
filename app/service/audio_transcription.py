@@ -80,8 +80,34 @@ class WhisperHandler:
         return await self._transcribe_hf(voice_data)
 
     async def _transcribe_hf(self, voice_data: bytearray) -> str:
-        logger.info("transcribing with hf")
-        return self.client.automatic_speech_recognition(voice_data).text
+        """Transcribe audio using Hugging Face API."""
+        logger.info(f"Transcribing with HF, data size: {len(voice_data)} bytes")
+        try:
+            # Check if we received valid audio data
+            if len(voice_data) < 44:  # Minimum size for a valid WAV header
+                logger.warning("Audio data too small, might not be valid")
+                return ""
+            
+            return self.client.automatic_speech_recognition(voice_data).text
+        except ValueError as e:
+            logger.error(f"Transcription error (ValueError): {str(e)}")
+            # If there's a problem with the format, try to process it as raw PCM
+            if "Expected binary inputs" in str(e):
+                logger.info("Attempting to transcribe as raw audio data")
+                import io
+                from huggingface_hub.utils import temp_file_manager
+                
+                # Save to a temporary file which the API can read
+                with temp_file_manager() as temp_path:
+                    with open(temp_path, "wb") as f:
+                        f.write(voice_data)
+                    
+                    # Try transcription again with file path
+                    return self.client.automatic_speech_recognition(temp_path).text
+            raise
+        except Exception as e:
+            logger.error(f"Transcription error: {str(e)}")
+            return ""  # Return empty string on error
 
 class WhisperModelSingleton:
     _instance: Optional[WhisperModel] = None
