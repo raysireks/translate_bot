@@ -10,8 +10,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class AnthropicService:
-    primary_model = "claude-3-5-sonnet-20240620"
-    fallback_model = "claude-3-5-sonnet-20241022"
+    sonnet_35_20240620 = "claude-3-5-sonnet-20240620"
+    sonnet_35_20241022 = "claude-3-5-sonnet-20241022"
+    sonnet_37_20250219 = "claude-3-7-sonnet-20250219"
 
     def __init__(self, 
                  locale: str = "cartagena, Colombia",  # Default to cartagena Spanish
@@ -46,7 +47,7 @@ class AnthropicService:
                 result: Message = await asyncio.to_thread(
                     self.client.messages.create,
                     max_tokens=150,
-                    model=self.primary_model,
+                    model=self.sonnet_37_20250219,
                     system=system_prompt,
                     temperature=0.2,
                     messages=[
@@ -66,7 +67,7 @@ class AnthropicService:
                 result: Message = await asyncio.to_thread(
                     self.client.messages.create,
                     max_tokens=150,
-                    model=self.fallback_model,
+                    model=self.sonnet_35_20241022,
                     system=system_prompt,
                     temperature=0.2,
                     messages=[

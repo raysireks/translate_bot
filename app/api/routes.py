@@ -46,7 +46,7 @@ class SimpleVAD:
         self.threshold = threshold
         self.frame_size = int(sample_rate * frame_duration_ms / 1000)
         # Number of frames of silence to consider speech segment complete
-        self.silence_frames_threshold = 5  # Roughly 450ms of silence
+        self.silence_frames_threshold = 2  # Roughly 450ms of silence
 
     def is_speech(self, audio_data):
         """Simple energy-based VAD"""
@@ -187,7 +187,7 @@ async def translate_audio(
 async def websocket_audio_stream(websocket: WebSocket):
     logger.info("WebSocket connection attempt received")
     await manager.connect(websocket)
-    vad = SimpleVAD(threshold=0.008)  # Lower threshold for better sensitivity
+    vad = SimpleVAD(frame_duration_ms=500, threshold=0.0125)  # Lower threshold for better sensitivity
     
     # Buffer for collecting audio chunks
     audio_buffer = b""
