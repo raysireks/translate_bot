@@ -165,10 +165,6 @@ export class AppComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Check if the user has interacted with audio before
-    const hasInteracted = localStorage.getItem('hasInteractedWithAudio');
-    this.hasInteractedWithAudio = hasInteracted === 'true';
-    
     // Check saved language preference
     const savedLanguage = localStorage.getItem('uiLanguage');
     if (savedLanguage === 'es') {
@@ -529,10 +525,9 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Record that the user has interacted with audio
+  // Record that the user has interacted with audio - no storage
   onAudioInteraction() {
     this.hasInteractedWithAudio = true;
-    localStorage.setItem('hasInteractedWithAudio', 'true');
     this.showAudioModal = false;
     
     // Mark that audio is now playing
