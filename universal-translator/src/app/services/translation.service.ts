@@ -54,10 +54,19 @@ export class TranslationService {
     return this.http.post<TranslationResponse>(`${this.apiUrl}/translate/text`, request);
   }
 
-  translateAudio(audioBlob: Blob): Observable<any> {
+  translateAudio(audioBlob: Blob, gender?: string, language?: string): Observable<any> {
     const formData = new FormData();
     formData.append('audio_data', audioBlob);
     formData.append('return_audio', 'true');
+    
+    // Add optional parameters if provided
+    if (gender) {
+      formData.append('gender', gender);
+    }
+    
+    if (language) {
+      formData.append('language', language);
+    }
     
     return this.http.post(`${this.apiUrl}/translate/audio`, formData, {
       responseType: 'blob',
@@ -121,5 +130,10 @@ export class TranslationService {
   // Check WebSocket connection status
   isWebSocketConnected(): boolean {
     return this.webSocketService.isConnected();
+  }
+
+  // Add configuration data to WebSocket
+  sendWebSocketConfig(config: any): void {
+    this.webSocketService.sendConfig(config);
   }
 } 

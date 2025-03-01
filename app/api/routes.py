@@ -113,7 +113,9 @@ async def translate_text(request: TranslationRequest):
 @router.post("/translate/audio")
 async def translate_audio(
     audio_data: UploadFile = File(...),
-    return_audio: bool = True
+    return_audio: bool = True,
+    gender: Optional[str] = Form(None),
+    language: Optional[str] = Form(None)
 ):
     
     try:
@@ -121,9 +123,22 @@ async def translate_audio(
         voice_data = await audio_data.read()
         pht_client = PHT()
         
+        # Helper function to return hardcoded gender
+        async def get_hardcoded_gender(gender_value):
+            """Simple async function to return the provided gender value"""
+            return gender_value
+        
         # Transcribe the audio
         handler = WhisperHandler(TranscriptionMode.HF.value, model_name="large")
-        gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(voice_data)))
+        
+        # Use provided gender if available, otherwise detect gender
+        if gender:
+            logger.info(f"Using provided gender: {gender}")
+            gender_task = asyncio.create_task(get_hardcoded_gender(gender))
+        else:
+            logger.info("Detecting gender from audio")
+            gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(voice_data)))
+            
         transcribed_text = await handler.transcribe_voice(voice_data)
         logger.info(f"Transcribed text: {transcribed_text}")
         
@@ -150,7 +165,7 @@ async def translate_audio(
             
             try:
                 logger.info("Starting TTS generation")
-                tts_response = await pht_client.text_to_speech(voice_data, translation, gender_task)
+                tts_response = await pht_client.text_to_speech(voice_data, translation, gender_task, language)
                 logger.info("TTS generation successful")
                 
                 # Return audio with text metadata in headers
@@ -199,184 +214,249 @@ async def websocket_audio_stream(websocket: WebSocket):
     testing_mode = False # Set to True to process only one segment per connection
     processed_segment = False
     
+    # Variable to store gender if provided
+    provided_gender = None
+    provided_language = None
+    
     try:
         logger.info("WebSocket connection established for audio streaming")
         await websocket.send_json({"type": "connection_status", "status": "connected"})
         
-        while True:
-            # Receive audio chunk from client
-            audio_chunk = await websocket.receive_bytes()
-            
-            # TEMPORARY: If in testing mode and we've already processed a segment, ignore further audio
-            if testing_mode and processed_segment:
+        # Wait for initial config message that might contain gender or language
+        try:
+            init_data = await asyncio.wait_for(websocket.receive_json(), timeout=2.0)
+            if 'gender' in init_data:
+                provided_gender = init_data['gender']
+                logger.info(f"Received gender parameter: {provided_gender}")
                 await websocket.send_json({
                     "type": "status",
-                    "message": "Testing mode active: Restart connection to process another segment"
+                    "message": f"Using provided gender: {provided_gender}"
                 })
-                continue
             
-            # Log the size of received chunks for debugging
-            logger.debug(f"Received audio chunk of size: {len(audio_chunk)} bytes")
+            if 'language' in init_data:
+                provided_language = init_data['language']
+                logger.info(f"Received language parameter: {provided_language}")
+                await websocket.send_json({
+                    "type": "status",
+                    "message": f"Using provided language: {provided_language}"
+                })
+        except (asyncio.TimeoutError, ValueError, TypeError):
+            # Continue without parameters if timeout or invalid message
+            logger.info("No initial parameters received, will use detection")
             
-            # Check if this frame contains speech
-            frame_has_speech = vad.is_speech(audio_chunk)
+        async def get_hardcoded_gender(gender_value):
+            """Simple async function to return the provided gender value"""
+            return gender_value
+        
+        while True:
+            # Receive message from client - handle both text and binary messages
+            message = await websocket.receive()
             
-            if frame_has_speech:
-                silence_frames = 0
-                if not is_speech_active:
-                    is_speech_active = True
-                    logger.debug("Speech detected, starting to collect audio")
+            # Check message type
+            if "bytes" in message:
+                # Process binary audio data
+                audio_chunk = message["bytes"]
                 
-                # Add chunk to the current speech segment
-                speech_chunks.append(audio_chunk)
-            else:
-                # No speech detected in this frame
-                if is_speech_active:
-                    silence_frames += 1
+                # Log the size of received chunks for debugging
+                logger.debug(f"Received audio chunk of size: {len(audio_chunk)} bytes")
+                
+                # Check if this frame contains speech
+                frame_has_speech = vad.is_speech(audio_chunk)
+                
+                if frame_has_speech:
+                    silence_frames = 0
+                    if not is_speech_active:
+                        is_speech_active = True
+                        logger.debug("Speech detected, starting to collect audio")
                     
-                    # Still add the silence to the current speech segment (for natural pauses)
-                    if silence_frames < vad.silence_frames_threshold:
-                        speech_chunks.append(audio_chunk)
-                    
-                    # If enough silent frames detected, consider this speech segment complete
-                    if silence_frames >= vad.silence_frames_threshold and speech_chunks:
-                        logger.debug(f"Speech segment complete, processing {len(speech_chunks)} chunks")
+                    # Add chunk to the current speech segment
+                    speech_chunks.append(audio_chunk)
+                else:
+                    # No speech detected in this frame
+                    if is_speech_active:
+                        silence_frames += 1
                         
-                        # Process the complete speech segment
-                        complete_audio = b"".join(speech_chunks)
+                        # Still add the silence to the current speech segment (for natural pauses)
+                        if silence_frames < vad.silence_frames_threshold:
+                            speech_chunks.append(audio_chunk)
                         
-                        # Only process if we have enough audio data (to avoid processing very short noises)
-                        if len(complete_audio) > 10000:  # Arbitrary threshold
-                            try:
-                                # Send status update to client
-                                await websocket.send_json({
-                                    "type": "status",
-                                    "message": "Processing speech segment..."
-                                })
-                                
-                                # Convert raw PCM data to WAV format
-                                # Create a BytesIO buffer for the WAV file
-                                wav_buffer = io.BytesIO()
-                                
-                                # Create WAV file with the correct parameters
-                                with wave.open(wav_buffer, 'wb') as wav_file:
-                                    wav_file.setnchannels(1)  # Mono
-                                    wav_file.setsampwidth(2)  # 2 bytes for int16
-                                    wav_file.setframerate(16000)  # Sample rate
-                                    wav_file.writeframes(complete_audio)
-                                
-                                # Reset buffer position
-                                wav_buffer.seek(0)
-                                wav_data = wav_buffer.read()
-                                
-                                # Start gender detection early in parallel with transcription
-                                pht_client = PHT()
-                                gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(wav_data)))
-                                
-                                # Check and normalize the audio format
-                                if wav_data.startswith(b'RIFF'):
-                                    logger.info("Detected WAV format audio data from client")
-                                    # WAV format - keep as is, the transcription service can handle it
-                                    audio_data = bytearray(wav_data)
-                                else:
-                                    logger.info("Detected raw PCM format audio data from client")
-                                    # Convert raw PCM to a format the transcription service can handle
-                                    audio_data = await convert_pcm_to_audio_format(bytearray(wav_data))
-                                
-                                # Send the normalized audio to the transcription service
-                                handler = WhisperHandler(TranscriptionMode.HF.value, model_name="large")
-                                
-                                transcribed_text = await handler.transcribe_voice(audio_data)
-                                
-                                if transcribed_text:
-                                    logger.info(f"Transcribed speech segment: {transcribed_text}")
-                                    
-                                    # Clean text more thoroughly - strip ALL non-alphanumeric characters
-                                    cleaned_text = re.sub(r'[^a-zA-Z\s]', '', transcribed_text.lower()).strip()
-                                    words = cleaned_text.split()
-                                    
-                                    # List of common short phrases we want to FILTER OUT
-                                    common_phrases = ["thank you", "gracias"]
-                                    
-                                    # Check if it's a common phrase we want to ignore
-                                    is_common_phrase = any(re.search(r'\b' + re.escape(phrase) + r'\b', cleaned_text) for phrase in common_phrases)
-                                    
-                                    # Check for highly repetitive content
-                                    is_repetitive = False
-                                    if len(words) >= 10:  # Only check longer transcriptions
-                                        # Count unique words
-                                        unique_words = set(words)
-                                        # Calculate ratio of unique words to total words
-                                        uniqueness_ratio = len(unique_words) / len(words)
-                                        
-                                        # If less than 20% of words are unique, consider it repetitive
-                                        if uniqueness_ratio < 0.2:
-                                            is_repetitive = True
-                                            logger.info(f"Detected repetitive content with uniqueness ratio: {uniqueness_ratio:.2f}")
-                                    
-                                    if len(words) <= 1 or is_common_phrase or is_repetitive:
-                                        logger.info(f"Ignoring transcription: '{transcribed_text}', cleaned: '{cleaned_text}'")
-                                        await websocket.send_json({
-                                            "type": "status",
-                                            "message": "Ignored transcription (single word, filtered phrase, or repetitive content)"
-                                        })
-                                        # Reset for the next speech segment
-                                        speech_chunks = []
-                                        is_speech_active = False
-                                        # Skip further processing
-                                        continue
-                                    
-                                    # Translate the transcribed text
-                                    translation = await anthropic_service.get_response(user_input=transcribed_text)
-                                    
-                                    # Send the results back to the client
-                                    await websocket.send_json({
-                                        "type": "transcription",
-                                        "transcribed_text": transcribed_text,
-                                        "translated_text": translation
-                                    })
-                                    
-                                    # Optionally generate TTS for the translation
-                                    try:
-                                        # Use the WAV-formatted audio data instead of the raw PCM data
-                                        tts_response = await pht_client.text_to_speech(bytearray(wav_data), translation, gender_task)
-                                        
-                                        # Send the audio back to the client
-                                        await websocket.send_bytes(bytes(tts_response))
-                                        await websocket.send_json({"type": "audio_complete"})
-                                    except Exception as e:
-                                        logger.error(f"TTS generation failed: {str(e)}")
-                                        await websocket.send_json({
-                                            "type": "error",
-                                            "message": f"TTS generation failed: {str(e)}"
-                                        })
-                                else:
-                                    logger.warning("Empty transcription returned")
+                        # If enough silent frames detected, consider this speech segment complete
+                        if silence_frames >= vad.silence_frames_threshold and speech_chunks:
+                            logger.debug(f"Speech segment complete, processing {len(speech_chunks)} chunks")
+                            
+                            # Process the complete speech segment
+                            complete_audio = b"".join(speech_chunks)
+                            
+                            # Only process if we have enough audio data (to avoid processing very short noises)
+                            if len(complete_audio) > 10000:  # Arbitrary threshold
+                                try:
+                                    # Send status update to client
                                     await websocket.send_json({
                                         "type": "status",
-                                        "message": "No speech detected in the audio segment"
+                                        "message": "Processing speech segment..."
                                     })
-                                
-                                # TEMPORARY: Mark segment as processed in testing mode
-                                if testing_mode:
-                                    processed_segment = True
+                                    
+                                    # Convert raw PCM data to WAV format
+                                    # Create a BytesIO buffer for the WAV file
+                                    wav_buffer = io.BytesIO()
+                                    
+                                    # Create WAV file with the correct parameters
+                                    with wave.open(wav_buffer, 'wb') as wav_file:
+                                        wav_file.setnchannels(1)  # Mono
+                                        wav_file.setsampwidth(2)  # 2 bytes for int16
+                                        wav_file.setframerate(16000)  # Sample rate
+                                        wav_file.writeframes(complete_audio)
+                                    
+                                    # Reset buffer position
+                                    wav_buffer.seek(0)
+                                    wav_data = wav_buffer.read()
+                                    
+                                    # Initialize PHT client
+                                    pht_client = PHT()
+                                    
+                                    # Use provided gender if available, otherwise detect gender
+                                    if provided_gender:
+                                        gender_task = asyncio.create_task(get_hardcoded_gender(provided_gender))
+                                        logger.info(f"Using provided gender: {provided_gender}")
+                                    else:
+                                        gender_task = asyncio.create_task(pht_client.detect_gender(bytearray(wav_data)))
+                                        logger.info("Detecting gender from audio")
+                                    
+                                    # Check and normalize the audio format
+                                    if wav_data.startswith(b'RIFF'):
+                                        logger.info("Detected WAV format audio data from client")
+                                        # WAV format - keep as is, the transcription service can handle it
+                                        audio_data = bytearray(wav_data)
+                                    else:
+                                        logger.info("Detected raw PCM format audio data from client")
+                                        # Convert raw PCM to a format the transcription service can handle
+                                        audio_data = await convert_pcm_to_audio_format(bytearray(wav_data))
+                                    
+                                    # Send the normalized audio to the transcription service
+                                    handler = WhisperHandler(TranscriptionMode.HF.value, model_name="large")
+                                    
+                                    transcribed_text = await handler.transcribe_voice(audio_data)
+                                    
+                                    if transcribed_text:
+                                        logger.info(f"Transcribed speech segment: {transcribed_text}")
+                                        
+                                        # Clean text more thoroughly - strip ALL non-alphanumeric characters
+                                        cleaned_text = re.sub(r'[^a-zA-Z\s]', '', transcribed_text.lower()).strip()
+                                        words = cleaned_text.split()
+                                        
+                                        # List of common short phrases we want to FILTER OUT
+                                        common_phrases = ["thank you", "gracias"]
+                                        
+                                        # Check if it's a common phrase we want to ignore
+                                        is_common_phrase = any(re.search(r'\b' + re.escape(phrase) + r'\b', cleaned_text) for phrase in common_phrases)
+                                        
+                                        # Check for highly repetitive content
+                                        is_repetitive = False
+                                        if len(words) >= 10:  # Only check longer transcriptions
+                                            # Count unique words
+                                            unique_words = set(words)
+                                            # Calculate ratio of unique words to total words
+                                            uniqueness_ratio = len(unique_words) / len(words)
+                                            
+                                            # If less than 20% of words are unique, consider it repetitive
+                                            if uniqueness_ratio < 0.2:
+                                                is_repetitive = True
+                                                logger.info(f"Detected repetitive content with uniqueness ratio: {uniqueness_ratio:.2f}")
+                                        
+                                        if len(words) <= 1 or is_common_phrase or is_repetitive:
+                                            logger.info(f"Ignoring transcription: '{transcribed_text}', cleaned: '{cleaned_text}'")
+                                            await websocket.send_json({
+                                                "type": "status",
+                                                "message": "Ignored transcription (single word, filtered phrase, or repetitive content)"
+                                            })
+                                            # Reset for the next speech segment
+                                            speech_chunks = []
+                                            is_speech_active = False
+                                            # Skip further processing
+                                            continue
+                                        
+                                        # Translate the transcribed text
+                                        translation = await anthropic_service.get_response(user_input=transcribed_text)
+                                        
+                                        # Send the results back to the client
+                                        await websocket.send_json({
+                                            "type": "transcription",
+                                            "transcribed_text": transcribed_text,
+                                            "translated_text": translation
+                                        })
+                                        
+                                        # Optionally generate TTS for the translation
+                                        try:
+                                            # Use the WAV-formatted audio data instead of the raw PCM data
+                                            tts_response = await pht_client.text_to_speech(bytearray(wav_data), translation, gender_task, provided_language)
+                                            
+                                            # Send the audio back to the client
+                                            await websocket.send_bytes(bytes(tts_response))
+                                            await websocket.send_json({"type": "audio_complete"})
+                                        except Exception as e:
+                                            logger.error(f"TTS generation failed: {str(e)}")
+                                            await websocket.send_json({
+                                                "type": "error",
+                                                "message": f"TTS generation failed: {str(e)}"
+                                            })
+                                    else:
+                                        logger.warning("Empty transcription returned")
+                                        await websocket.send_json({
+                                            "type": "status",
+                                            "message": "No speech detected in the audio segment"
+                                        })
+                                    
+                                    # TEMPORARY: Mark segment as processed in testing mode
+                                    if testing_mode:
+                                        processed_segment = True
+                                        await websocket.send_json({
+                                            "type": "status", 
+                                            "message": "Testing mode: One segment processed. Restart connection for more."
+                                        })
+                                except Exception as e:
+                                    logger.error(f"Error processing speech segment: {str(e)}", exc_info=True)
                                     await websocket.send_json({
-                                        "type": "status", 
-                                        "message": "Testing mode: One segment processed. Restart connection for more."
+                                        "type": "error",
+                                        "message": f"Error processing speech: {str(e)}"
                                     })
-                            except Exception as e:
-                                logger.error(f"Error processing speech segment: {str(e)}", exc_info=True)
-                                await websocket.send_json({
-                                    "type": "error",
-                                    "message": f"Error processing speech: {str(e)}"
-                                })
-                        else:
-                            logger.debug(f"Audio segment too short ({len(complete_audio)} bytes), ignoring")
-                        
-                        # Reset for the next speech segment
-                        speech_chunks = []
-                        is_speech_active = False
-    
+                            else:
+                                logger.debug(f"Audio segment too short ({len(complete_audio)} bytes), ignoring")
+                            
+                            # Reset for the next speech segment
+                            speech_chunks = []
+                            is_speech_active = False
+            elif "text" in message:
+                # Process text message (JSON config)
+                try:
+                    data = json.loads(message["text"])
+                    logger.info(f"Received JSON config: {data}")
+                    
+                    # Update gender if provided
+                    if "gender" in data:
+                        provided_gender = data["gender"]
+                        logger.info(f"Updated gender parameter: {provided_gender}")
+                        await websocket.send_json({
+                            "type": "status",
+                            "message": f"Updated gender to: {provided_gender}"
+                        })
+                    
+                    # Update language if provided
+                    if "language" in data:
+                        provided_language = data["language"]
+                        logger.info(f"Updated language parameter: {provided_language}")
+                        await websocket.send_json({
+                            "type": "status",
+                            "message": f"Updated language to: {provided_language}"
+                        })
+                    
+                except json.JSONDecodeError:
+                    logger.error("Received invalid JSON message")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Invalid configuration format"
+                    })
+            else:
+                logger.warning(f"Received unknown message type: {message}")
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
         manager.disconnect(websocket)

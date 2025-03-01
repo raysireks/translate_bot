@@ -22,16 +22,70 @@
       </div>
     </div>
     
-    <div class="mode-selector">
-      <label>
-        <input type="checkbox" [checked]="isStreamingMode" (change)="toggleStreamingMode()">
+    <!-- New control bar with mode toggle button and tristate buttons -->
+    <div class="control-bar">
+      <!-- Mode toggle button -->
+      <button 
+        class="mode-toggle-btn" 
+        [class.active]="isStreamingMode" 
+        (click)="toggleStreamingMode()">
         {{ translations.streamingMode }}
-      </label>
+      </button>
       
-      <!-- Status dot that's ALWAYS visible, regardless of streaming mode -->
+      <!-- Status dot -->
       <span class="status-dot-wrapper">
         <span class="status-dot" [ngClass]="isStreamingMode ? getStatusClass() : 'disconnected'"></span>
       </span>
+      
+      <!-- Accent selection -->
+      <div class="control-group">
+        <label>{{ translations.accent }}:</label>
+        <div class="tristate-buttons">
+          <button 
+            class="tristate-btn" 
+            [class.active]="selectedTtsLanguage === ''" 
+            (click)="setTtsLanguage('')">
+            {{ translations.auto }}
+          </button>
+          <button 
+            class="tristate-btn" 
+            [class.active]="selectedTtsLanguage === 'en'" 
+            (click)="setTtsLanguage('en')">
+            {{ translations.english }}
+          </button>
+          <button 
+            class="tristate-btn" 
+            [class.active]="selectedTtsLanguage === 'es'" 
+            (click)="setTtsLanguage('es')">
+            {{ translations.spanish }}
+          </button>
+        </div>
+      </div>
+      
+      <!-- Gender selection -->
+      <div class="control-group">
+        <label>{{ translations.gender }}:</label>
+        <div class="tristate-buttons">
+          <button 
+            class="tristate-btn" 
+            [class.active]="selectedTtsGender === ''" 
+            (click)="setTtsGender('')">
+            {{ translations.auto }}
+          </button>
+          <button 
+            class="tristate-btn" 
+            [class.active]="selectedTtsGender === 'male'" 
+            (click)="setTtsGender('male')">
+            {{ translations.male }}
+          </button>
+          <button 
+            class="tristate-btn" 
+            [class.active]="selectedTtsGender === 'female'" 
+            (click)="setTtsGender('female')">
+            {{ translations.female }}
+          </button>
+        </div>
+      </div>
       
       <!-- Device selector button -->
       <button class="device-selector-btn" (click)="toggleDeviceSelector()">
@@ -138,6 +192,7 @@
         </option>
       </select>
     </div>
+    
     <div class="device-info">
       <p *ngIf="audioInputDevices.length === 0">{{ translations.noMicrophonesDetected }}</p>
       <p *ngIf="audioOutputDevices.length === 0">{{ translations.noSpeakersDetected }}</p>

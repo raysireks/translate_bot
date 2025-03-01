@@ -182,4 +182,21 @@ export class WebSocketService {
   isConnected(): boolean {
     return this.connected.value;
   }
+
+  sendConfig(config: any): void {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      try {
+        this.socket.send(JSON.stringify(config));
+        console.log('Sent configuration to WebSocket:', config);
+      } catch (error) {
+        console.error('Error sending configuration:', error);
+        this.messageSubject.next({
+          type: 'error',
+          message: 'Failed to send configuration'
+        });
+      }
+    } else {
+      console.warn('WebSocket not connected, cannot send configuration');
+    }
+  }
 } 

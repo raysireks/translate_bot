@@ -33,6 +33,13 @@ interface UiTranslations {
   devicePermissionNote: string;
   microphone: string;
   speaker: string;
+  gender: string;
+  accent: string;
+  auto: string;
+  english: string;
+  spanish: string;
+  male: string;
+  female: string;
 }
 
 @Component({
@@ -76,7 +83,14 @@ export class AppComponent implements OnInit, OnDestroy {
     speakerSelectionNote: 'Note: Speaker selection only works in Chrome, Edge, and Opera. Other browsers will use the system default.',
     devicePermissionNote: 'If device names don\'t appear, you may need to grant persistent audio permission to this site.',
     microphone: 'Microphone',
-    speaker: 'Speaker'
+    speaker: 'Speaker',
+    gender: 'Voice Gender',
+    accent: 'Accent',
+    auto: 'Auto',
+    english: 'English',
+    spanish: 'Spanish',
+    male: 'Male',
+    female: 'Female'
   };
   
   private spanishTranslations: UiTranslations = {
@@ -107,7 +121,14 @@ export class AppComponent implements OnInit, OnDestroy {
     speakerSelectionNote: 'Nota: La selección de altavoces solo funciona en Chrome, Edge y Opera. Otros navegadores usarán el predeterminado del sistema.',
     devicePermissionNote: 'Si los nombres de los dispositivos no aparecen, es posible que debas otorgar permiso de audio persistente a este sitio.',
     microphone: 'Micrófono',
-    speaker: 'Altavoz'
+    speaker: 'Altavoz',
+    gender: 'Género de Voz',
+    accent: 'Acento',
+    auto: 'Auto',
+    english: 'Inglés',
+    spanish: 'Español',
+    male: 'Masculino',
+    female: 'Femenino'
   };
   
   // Getter for current translations
@@ -144,6 +165,32 @@ export class AppComponent implements OnInit, OnDestroy {
 
   // Add this property for connection polling
   private connectionPollingInterval: any = null;
+
+  // Language and gender selection for TTS
+  selectedTtsLanguage: string = '';
+  selectedTtsGender: string = '';
+  
+  // Language options
+  languageOptions = [
+    { code: '', label: 'Auto Detect' },
+    { code: 'en', label: 'English' },
+    { code: 'es', label: 'Spanish' },
+    { code: 'fr', label: 'French' },
+    { code: 'de', label: 'German' },
+    { code: 'it', label: 'Italian' },
+    { code: 'pt', label: 'Portuguese' },
+    { code: 'ru', label: 'Russian' },
+    { code: 'zh', label: 'Chinese' },
+    { code: 'ja', label: 'Japanese' },
+    { code: 'ko', label: 'Korean' }
+  ];
+  
+  // Gender options
+  genderOptions = [
+    { value: '', label: 'Auto Detect' },
+    { value: 'male', label: 'Male' },
+    { value: 'female', label: 'Female' }
+  ];
 
   constructor(
     @Inject(TranslationService) public translationService: TranslationService,
@@ -196,6 +243,11 @@ export class AppComponent implements OnInit, OnDestroy {
         
         // Setup WebSocket connection
         this.translationService.connectWebSocket();
+        
+        // Send initial configuration
+        setTimeout(() => {
+          this.sendStreamingSettings();
+        }, 500); // Small delay to ensure connection is established
         
         // Setup streaming subscription
         this.setupStreamingSubscription();
@@ -441,7 +493,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.errorMessage = '';
     this.audioUrl = null;
 
-    this.translationService.translateAudio(audioBlob).subscribe({
+    this.translationService.translateAudio(
+      audioBlob, 
+      this.selectedTtsGender || undefined,
+      this.selectedTtsLanguage || undefined
+    ).subscribe({
       next: (response) => {
         const transcribedText = decodeURIComponent(response.headers.get('X-Transcribed-Text') || '');
         const translatedText = decodeURIComponent(response.headers.get('X-Translated-Text') || '');
@@ -624,5 +680,45 @@ export class AppComponent implements OnInit, OnDestroy {
     
     // Clean up connection polling
     this.stopConnectionPolling();
+  }
+
+  // Add these new methods to handle TTS language and gender changes
+  
+  onTtsLanguageChange(): void {
+    console.log(`TTS Language changed to: ${this.selectedTtsLanguage}`);
+    // If streaming is active, send the updated settings
+    this.sendStreamingSettings();
+  }
+  
+  onTtsGenderChange(): void {
+    console.log(`TTS Gender changed to: ${this.selectedTtsGender}`);
+    // If streaming is active, send the updated settings
+    this.sendStreamingSettings();
+  }
+  
+  // Method to send streaming settings to the WebSocket
+  private sendStreamingSettings(): void {
+    if (this.isStreamingMode && this.translationService.isWebSocketConnected()) {
+      const settings = {
+        gender: this.selectedTtsGender || undefined,
+        language: this.selectedTtsLanguage || undefined
+      };
+      
+      console.log('Sending updated streaming settings:', settings);
+      this.translationService.sendWebSocketConfig(settings);
+    }
+  }
+
+  // Add these methods to control the tristate buttons
+  setTtsLanguage(language: string): void {
+    this.selectedTtsLanguage = language;
+    console.log(`TTS Language set to: ${language || 'auto'}`);
+    this.sendStreamingSettings();
+  }
+
+  setTtsGender(gender: string): void {
+    this.selectedTtsGender = gender;
+    console.log(`TTS Gender set to: ${gender || 'auto'}`);
+    this.sendStreamingSettings();
   }
 }

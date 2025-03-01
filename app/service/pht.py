@@ -47,7 +47,7 @@ class PHT:
             logger.error(f"Error during gender detection: {str(e)}", exc_info=True)
             return None
 
-    async def text_to_speech(self, audio: bytearray, text: str, gender_task=None) -> bytearray:
+    async def text_to_speech(self, audio: bytearray, text: str, gender_task=None, language=None) -> bytearray:
         try:
             logger.info(f"Starting TTS generation for text: {text[:100]}...")
             audio_bytes = bytes(audio)
@@ -58,10 +58,13 @@ class PHT:
                 gender_task = asyncio.create_task(self.detect_gender(audio))
             
             # Get language
-            lang = detect(text)
-            logger.info(f"Detected language for TTS: {lang}")
-            if lang not in ["es", "en"]:
-                lang = "es"
+            if language is None:
+                lang = detect(text)
+            else:
+                lang = language
+            logger.info(f"Detected language for TTS: {language}")
+            if language not in ["es", "en"]:
+                language = "es"
             
             # Define voice settings
             voice_settings = {
