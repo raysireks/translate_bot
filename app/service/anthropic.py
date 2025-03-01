@@ -46,7 +46,7 @@ class AnthropicService:
                 result: Message = await asyncio.to_thread(
                     self.client.messages.create,
                     max_tokens=150,
-                    model=self.primary_model,
+                    model=self.fallback_model,
                     system=system_prompt,
                     temperature=0.2,
                     messages=[
@@ -66,7 +66,7 @@ class AnthropicService:
                 result: Message = await asyncio.to_thread(
                     self.client.messages.create,
                     max_tokens=150,
-                    model=self.fallback_model,
+                    model=self.primary_model,
                     system=system_prompt,
                     temperature=0.2,
                     messages=[
