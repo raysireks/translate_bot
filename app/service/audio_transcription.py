@@ -88,12 +88,12 @@ class WhisperHandler:
                 logger.warning("Audio data too small, might not be valid")
                 return ""
             
-            return self.client.automatic_speech_recognition(voice_data).text
-        except ValueError as e:
-            logger.error(f"Transcription error (ValueError): {str(e)}")
-            # If there's a problem with the format, try to process it as raw PCM
-            if "Expected binary inputs" in str(e):
-                logger.info("Attempting to transcribe as raw audio data")
+            # Try direct method first (with explicit bytes conversion)
+            try:
+                return self.client.automatic_speech_recognition(bytes(voice_data)).text
+            except ValueError as e:
+                # If direct method fails, immediately fall back to file-based method
+                logger.info("Direct API call failed, falling back to file-based method")
                 import io
                 from huggingface_hub.utils import temp_file_manager
                 
@@ -102,9 +102,9 @@ class WhisperHandler:
                     with open(temp_path, "wb") as f:
                         f.write(voice_data)
                     
-                    # Try transcription again with file path
+                    # Try transcription with file path
                     return self.client.automatic_speech_recognition(temp_path).text
-            raise
+            
         except Exception as e:
             logger.error(f"Transcription error: {str(e)}")
             return ""  # Return empty string on error

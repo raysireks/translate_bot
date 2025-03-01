@@ -284,6 +284,7 @@ async def websocket_audio_stream(websocket: WebSocket):
                                 
                                 # Send the normalized audio to the transcription service
                                 handler = WhisperHandler(TranscriptionMode.HF.value)
+                                
                                 transcribed_text = await handler.transcribe_voice(audio_data)
                                 
                                 if transcribed_text:
