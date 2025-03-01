@@ -9,14 +9,14 @@
       </button>
     </div>
     
-    <!-- Move audio player to the top -->
-    <div class="audio-player-container" *ngIf="audioUrl">
-      <audio #audioPlayer controls [src]="audioUrl" (play)="onAudioInteraction()" (ended)="playNextAudioFromQueue()">
+    <!-- Always show audio player container -->
+    <div class="audio-player-container">
+      <audio #audioPlayer controls [src]="audioUrl || ''" (play)="onAudioInteraction()" (ended)="playNextAudioFromQueue()">
         Your browser does not support the audio element.
       </audio>
       
       <!-- Play button indicator - only show when audio is available but user hasn't interacted -->
-      <div *ngIf="!hasInteractedWithAudio" class="play-button-indicator">
+      <div *ngIf="audioUrl && !hasInteractedWithAudio" class="play-button-indicator">
         <div class="indicator-arrow">↑</div>
         <div class="indicator-text">{{ isSpanish ? 'Presiona play para escuchar' : 'Press play to listen' }}</div>
       </div>
@@ -27,18 +27,10 @@
         <input type="checkbox" [checked]="isStreamingMode" (change)="toggleStreamingMode()">
         {{ translations.streamingMode }}
       </label>
-      <span class="mode-description" *ngIf="isStreamingMode">
-        {{ translations.streamingModeDescription }}
-      </span>
-      <span class="mode-description" *ngIf="!isStreamingMode">
-        {{ translations.batchModeDescription }}
-      </span>
       
-      <!-- Connection status indicator -->
-      <span *ngIf="isStreamingMode" class="connection-status" 
-            [class.connected]="translationService.isWebSocketConnected()"
-            [class.disconnected]="!translationService.isWebSocketConnected()">
-        {{ translationService.isWebSocketConnected() ? translations.connected : translations.disconnected }}
+      <!-- Status dot that's ALWAYS visible, regardless of streaming mode -->
+      <span class="status-dot-wrapper">
+        <span class="status-dot" [ngClass]="isStreamingMode ? getStatusClass() : 'disconnected'"></span>
       </span>
       
       <!-- Device selector button -->
@@ -81,8 +73,9 @@
           </button>
           
           <button 
+            *ngIf="!isStreamingMode"
             (click)="toggleRecording()" 
-            [disabled]="isLoading || (isStreamingMode && !translationService.isWebSocketConnected())"
+            [disabled]="isLoading"
             [class.recording]="audioRecordingService.recording$ | async"
             class="record-btn">
             {{ (audioRecordingService.recording$ | async) ? translations.stopRecording : translations.startRecording }}

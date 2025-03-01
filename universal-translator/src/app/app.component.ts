@@ -142,6 +142,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private audioQueue: Blob[] = []; // Queue to store pending audio blobs
   private isAudioPlaying = false; // Flag to track if audio is currently playing
 
+  // Add this property for connection polling
+  private connectionPollingInterval: any = null;
+
   constructor(
     @Inject(TranslationService) public translationService: TranslationService,
     @Inject(AudioRecordingService) public audioRecordingService: AudioRecordingService
@@ -174,30 +177,46 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   toggleStreamingMode() {
-    this.isStreamingMode = !this.isStreamingMode;
-    this.audioRecordingService.setRecordingMode(
-      this.isStreamingMode ? RecordingMode.STREAMING : RecordingMode.BATCH
-    );
+    // Determine if we're turning streaming mode on or off
+    const enableStreamingMode = !this.isStreamingMode;
     
-    if (this.isStreamingMode) {
-      // Explicitly connect to WebSocket when enabling streaming mode
-      this.translationService.connectWebSocket();
-      // Set up streaming subscription if we're in streaming mode
-      this.setupStreamingSubscription();
-    } else {
-      // Explicitly disconnect WebSocket when disabling streaming mode
-      this.translationService.disconnectWebSocket();
+    // Always stop any existing recording first
+    const stopRecordingPromise = this.audioRecordingService.isRecording() 
+      ? this.audioRecordingService.stopRecording().catch(error => {
+          console.error('Error stopping recording:', error);
+        })
+      : Promise.resolve();
+    
+    // After stopping any recording, then update the mode
+    stopRecordingPromise.then(() => {
+      this.isStreamingMode = enableStreamingMode;
+      this.audioRecordingService.setRecordingMode(
+        this.isStreamingMode ? RecordingMode.STREAMING : RecordingMode.BATCH
+      );
       
-      if (this.streamingSubscription) {
-        // Clean up subscription if we're switching back to batch mode
-        this.streamingSubscription.unsubscribe();
-        this.streamingSubscription = null;
+      if (this.isStreamingMode) {
+        // Clear any previous streaming results
+        this.streamedTranscriptions = [];
+        
+        // Setup WebSocket connection
+        this.translationService.connectWebSocket();
+        
+        // Setup streaming subscription
+        this.setupStreamingSubscription();
+        
+        // Start polling for connection and auto-recording
+        this.startConnectionPolling();
+        
+        // Automatically start recording once in streaming mode
+        this.startRecordingIfConnected();
+      } else {
+        // Disconnect WebSocket
+        this.translationService.disconnectWebSocket();
+        
+        // Stop connection polling
+        this.stopConnectionPolling();
       }
-    }
-    
-    // Clear the audio queue when switching modes
-    this.audioQueue = [];
-    this.isAudioPlaying = false;
+    });
   }
 
   reconnectWebSocket() {
@@ -540,6 +559,60 @@ export class AppComponent implements OnInit, OnDestroy {
     localStorage.setItem('uiLanguage', this.isSpanish ? 'es' : 'en');
   }
 
+  // Add new method to start polling
+  private startConnectionPolling() {
+    // Clear any existing interval
+    this.stopConnectionPolling();
+    
+    // Poll every second to check connection and recording state
+    this.connectionPollingInterval = setInterval(() => {
+      this.startRecordingIfConnected();
+    }, 1000);
+  }
+
+  // Add new method to stop polling
+  private stopConnectionPolling() {
+    if (this.connectionPollingInterval) {
+      clearInterval(this.connectionPollingInterval);
+      this.connectionPollingInterval = null;
+    }
+  }
+
+  // Add new method to start recording if connected
+  private startRecordingIfConnected() {
+    // Only proceed if we're in streaming mode
+    if (!this.isStreamingMode) return;
+    
+    // Check if WebSocket is connected
+    const isConnected = this.translationService.isWebSocketConnected();
+    
+    // If connected but not recording, start recording
+    if (isConnected && !this.audioRecordingService.isRecording()) {
+      console.log('WebSocket connected but not recording. Starting recording...');
+      this.startRecording();
+    }
+    // If disconnected but recording, stop recording
+    else if (!isConnected && this.audioRecordingService.isRecording()) {
+      console.log('WebSocket disconnected but still recording. Stopping recording...');
+      this.audioRecordingService.stopRecording().catch(error => {
+        console.error('Error stopping recording:', error);
+      });
+    }
+  }
+
+  // More robust status class method
+  getStatusClass(): string {
+    console.log('Status check - WebSocket connected:', this.translationService.isWebSocketConnected());
+    console.log('Status check - Recording active:', this.audioRecordingService.isRecording());
+    
+    // Need both WebSocket connected AND recording active for green status
+    if (this.translationService.isWebSocketConnected() && this.audioRecordingService.isRecording()) {
+      return 'connected';
+    } else {
+      return 'disconnected';
+    }
+  }
+
   ngOnDestroy() {
     if (this.audioUrl) {
       URL.revokeObjectURL(this.audioUrl);
@@ -553,5 +626,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.deviceSubscription) {
       this.deviceSubscription.unsubscribe();
     }
+    
+    // Clean up connection polling
+    this.stopConnectionPolling();
   }
 }

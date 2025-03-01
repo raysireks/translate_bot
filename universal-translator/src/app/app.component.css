@@ -260,21 +260,21 @@ button {
 
 /* Connection status */
 .connection-status {
-  margin-left: auto;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: bold;
+  margin-left: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 .connection-status.connected {
   background-color: #4caf50;
-  color: white;
+  box-shadow: 0 0 5px #4caf50;
 }
 
 .connection-status.disconnected {
   background-color: #f44336;
-  color: white;
+  box-shadow: 0 0 5px #f44336;
 }
 
 /* Add these styles to your existing CSS */
@@ -470,5 +470,43 @@ button {
   }
   50% {
     transform: translateY(-10px);
+  }
+}
+
+/* Status dot styles */
+.status-dot-wrapper {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #ccc;
+}
+
+.status-dot.connected {
+  background-color: #4caf50;
+  box-shadow: 0 0 8px #4caf50;
+  animation: pulse-green 1.5s infinite;
+}
+
+.status-dot.disconnected {
+  background-color: #f44336;
+  box-shadow: 0 0 8px #f44336;
+}
+
+@keyframes pulse-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
   }
 } 
