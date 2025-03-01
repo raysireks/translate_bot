@@ -223,7 +223,13 @@ export class AppComponent implements OnInit, OnDestroy {
     )
     .catch(error => {
       console.error('Recording error:', error);
-      this.errorMessage = 'Error accessing microphone. Please check permissions.';
+      // Display the more detailed error message
+      this.errorMessage = error.message || 'Error accessing microphone. Please check permissions.';
+      
+      // If on iOS, add additional guidance
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        this.errorMessage += ' On iOS, make sure to grant microphone permissions and check that no other app is using the microphone.';
+      }
     });
   }
 

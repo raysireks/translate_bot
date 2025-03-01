@@ -85,33 +85,85 @@ export class AudioRecordingService {
     }
 
     try {
-      // Use the selected device if available
+      // iOS Safari specific constraints
       const constraints: MediaStreamConstraints = {
-        audio: this.selectedDeviceId ? { deviceId: { exact: this.selectedDeviceId } } : true
+        audio: {
+          // Add these specific constraints for iOS
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          // For iOS, we need to specify these
+          sampleRate: 44100,
+          channelCount: 1,
+          deviceId: this.selectedDeviceId ? { exact: this.selectedDeviceId } : undefined
+        }
       };
       
+      // First check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Media devices API not supported in this browser');
+      }
+
+      // Try to get the stream
       this.stream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      this.mediaRecorder = new MediaRecorder(this.stream);
+      // Verify we actually got the stream and tracks
+      if (!this.stream || !this.stream.getAudioTracks().length) {
+        throw new Error('No audio track available in the media stream');
+      }
+
+      // Check if the audio track is actually active
+      const audioTrack = this.stream.getAudioTracks()[0];
+      if (!audioTrack.enabled || audioTrack.readyState !== 'live') {
+        throw new Error('Audio track is not active');
+      }
+
+      // For iOS Safari, we need to resume the AudioContext immediately after user gesture
+      if (this.recordingMode === RecordingMode.STREAMING) {
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+          sampleRate: 16000,
+        });
+        
+        // iOS Safari requires resume() to be called after user gesture
+        if (this.audioContext.state === 'suspended') {
+          await this.audioContext.resume();
+        }
+      }
+
+      // Set up MediaRecorder with specific MIME type for iOS
+      if (this.recordingMode === RecordingMode.BATCH) {
+        // Try different MIME types that work on iOS
+        const mimeTypes = [
+          'audio/webm',
+          'audio/mp4',
+          'audio/aac',
+          'audio/wav'
+        ];
+
+        let options: MediaRecorderOptions | undefined;
+        
+        for (const mimeType of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(mimeType)) {
+            options = {
+              mimeType,
+              audioBitsPerSecond: 16000
+            };
+            break;
+          }
+        }
+
+        this.mediaRecorder = new MediaRecorder(this.stream, options);
+      }
+
+      // Rest of your existing setup code...
       this.recordingSubject.next(true);
       this.recordingMode = mode;
-
       this.audioChunks = [];
-      
-      // Connect to WebSocket if in streaming mode
+
       if (this.recordingMode === RecordingMode.STREAMING) {
         this.webSocketService.connect();
-      }
-      
-      if (this.recordingMode === RecordingMode.BATCH) {
-        // For batch mode, continue using MediaRecorder
-        const options = {
-          mimeType: 'audio/webm',
-          audioBitsPerSecond: 16000
-        };
-        
-        this.mediaRecorder = new MediaRecorder(this.stream, options);
-        
+        this.setupRawAudioProcessing(this.stream);
+      } else if (this.mediaRecorder) {
         this.mediaRecorder.addEventListener('dataavailable', (event) => {
           if (event.data.size > 0) {
             this.audioChunks.push(event.data);
@@ -120,12 +172,27 @@ export class AudioRecordingService {
         
         this.mediaRecorder.start(1000);
       } else {
-        // For streaming mode, use ScriptProcessorNode to get raw PCM data
-        this.setupRawAudioProcessing(this.stream);
+        throw new Error('MediaRecorder not initialized');
       }
+
     } catch (error) {
       console.error('Error starting recording:', error);
-      throw error;
+      
+      // Provide more specific error messages
+      let errorMessage = 'Error accessing microphone. ';
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          errorMessage += 'Microphone permission was denied. Please check your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage += 'No microphone was found on your device.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage += 'Your microphone is busy or unavailable.';
+        } else {
+          errorMessage += error.message;
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 
