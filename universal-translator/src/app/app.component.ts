@@ -59,12 +59,19 @@ export class AppComponent implements OnInit, OnDestroy {
     );
     
     if (this.isStreamingMode) {
+      // Explicitly connect to WebSocket when enabling streaming mode
+      this.translationService.connectWebSocket();
       // Set up streaming subscription if we're in streaming mode
       this.setupStreamingSubscription();
-    } else if (this.streamingSubscription) {
-      // Clean up subscription if we're switching back to batch mode
-      this.streamingSubscription.unsubscribe();
-      this.streamingSubscription = null;
+    } else {
+      // Explicitly disconnect WebSocket when disabling streaming mode
+      this.translationService.disconnectWebSocket();
+      
+      if (this.streamingSubscription) {
+        // Clean up subscription if we're switching back to batch mode
+        this.streamingSubscription.unsubscribe();
+        this.streamingSubscription = null;
+      }
     }
   }
 
