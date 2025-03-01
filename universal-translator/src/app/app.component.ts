@@ -3,6 +3,38 @@ import { TranslationService, TranslationRequest, TranslationResponse, StreamedTr
 import { AudioRecordingService, RecordingMode } from './services/audio-recording.service';
 import { Subscription } from 'rxjs';
 
+// Interface for UI translations
+interface UiTranslations {
+  title: string;
+  streamingMode: string;
+  streamingModeDescription: string;
+  batchModeDescription: string;
+  connected: string;
+  disconnected: string;
+  audioDevices: string;
+  enableAudioTitle: string;
+  enableAudioInstructions1: string;
+  enableAudioInstructions2: string;
+  gotItPlayAudio: string;
+  close: string;
+  input: string;
+  inputPlaceholder: string;
+  translate: string;
+  startRecording: string;
+  stopRecording: string;
+  translation: string;
+  translationPlaceholder: string;
+  streamingHistory: string;
+  transcribed: string;
+  translated: string;
+  noMicrophonesDetected: string;
+  noSpeakersDetected: string;
+  speakerSelectionNote: string;
+  devicePermissionNote: string;
+  microphone: string;
+  speaker: string;
+}
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -11,6 +43,77 @@ import { Subscription } from 'rxjs';
 })
 export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('audioPlayer') audioPlayer!: ElementRef<HTMLAudioElement>;
+
+  // Language toggle properties
+  isSpanish = false;
+  
+  // Define translations
+  private englishTranslations: UiTranslations = {
+    title: 'Universal Translator',
+    streamingMode: 'Live Translation Mode',
+    streamingModeDescription: 'Live translation mode is active - translations will appear as you speak. Press the play button above when audio appears.',
+    batchModeDescription: 'Standard mode is active - translations will appear after you finish speaking',
+    connected: 'Connected',
+    disconnected: 'Disconnected',
+    audioDevices: 'Audio Devices',
+    enableAudioTitle: 'Enable Audio Playback',
+    enableAudioInstructions1: 'To hear translations automatically, please tap the "Play" button for this first audio.',
+    enableAudioInstructions2: 'After this, future audio responses will play automatically.',
+    gotItPlayAudio: 'Got it, play audio',
+    close: 'Close',
+    input: 'Input',
+    inputPlaceholder: 'Enter text to translate...',
+    translate: 'Translate Text',
+    startRecording: 'Translate Voice',
+    stopRecording: 'Stop Voice',
+    translation: 'Translation',
+    translationPlaceholder: 'Translation will appear here...',
+    streamingHistory: 'Streaming History',
+    transcribed: 'Transcribed',
+    translated: 'Translated',
+    noMicrophonesDetected: 'No microphones detected. Please check your connections.',
+    noSpeakersDetected: 'No speakers detected. Please check your connections.',
+    speakerSelectionNote: 'Note: Speaker selection only works in Chrome, Edge, and Opera. Other browsers will use the system default.',
+    devicePermissionNote: 'If device names don\'t appear, you may need to grant persistent audio permission to this site.',
+    microphone: 'Microphone',
+    speaker: 'Speaker'
+  };
+  
+  private spanishTranslations: UiTranslations = {
+    title: 'Traductor Universal',
+    streamingMode: 'Modo de Traducción en Vivo',
+    streamingModeDescription: 'El modo de traducción en vivo está activo - las traducciones aparecerán mientras hablas. Presiona el botón de reproducción cuando aparezca el audio.',
+    batchModeDescription: 'El modo estándar está activo - las traducciones aparecerán después de que termines de hablar',
+    connected: 'Conectado',
+    disconnected: 'Desconectado',
+    audioDevices: 'Dispositivos de audio',
+    enableAudioTitle: 'Habilitar reproducción de audio',
+    enableAudioInstructions1: 'Para escuchar traducciones automáticamente, toca el botón "Reproducir" para este primer audio.',
+    enableAudioInstructions2: 'Después de esto, las futuras respuestas de audio se reproducirán automáticamente.',
+    gotItPlayAudio: 'Entendido, reproducir audio',
+    close: 'Cerrar',
+    input: 'Entrada',
+    inputPlaceholder: 'Ingresa texto para traducir...',
+    translate: 'Traducir Texto',
+    startRecording: 'Traducir Voz',
+    stopRecording: 'Detener Voz',
+    translation: 'Traducción',
+    translationPlaceholder: 'La traducción aparecerá aquí...',
+    streamingHistory: 'Historial de transmisión',
+    transcribed: 'Transcrito',
+    translated: 'Traducido',
+    noMicrophonesDetected: 'No se detectaron micrófonos. Por favor, verifica tus conexiones.',
+    noSpeakersDetected: 'No se detectaron altavoces. Por favor, verifica tus conexiones.',
+    speakerSelectionNote: 'Nota: La selección de altavoces solo funciona en Chrome, Edge y Opera. Otros navegadores usarán el predeterminado del sistema.',
+    devicePermissionNote: 'Si los nombres de los dispositivos no aparecen, es posible que debas otorgar permiso de audio persistente a este sitio.',
+    microphone: 'Micrófono',
+    speaker: 'Altavoz'
+  };
+  
+  // Getter for current translations
+  get translations(): UiTranslations {
+    return this.isSpanish ? this.spanishTranslations : this.englishTranslations;
+  }
 
   inputText = '';
   translatedText = '';
@@ -31,6 +134,14 @@ export class AppComponent implements OnInit, OnDestroy {
   deviceSubscription: Subscription | null = null;
   showDeviceSelector: boolean = false;
 
+  // New properties for audio player modal
+  showAudioModal = false;
+  hasInteractedWithAudio = false;
+
+  // Add these new properties to the class
+  private audioQueue: Blob[] = []; // Queue to store pending audio blobs
+  private isAudioPlaying = false; // Flag to track if audio is currently playing
+
   constructor(
     @Inject(TranslationService) public translationService: TranslationService,
     @Inject(AudioRecordingService) public audioRecordingService: AudioRecordingService
@@ -50,6 +161,16 @@ export class AppComponent implements OnInit, OnDestroy {
         this.selectedMicrophoneId = devices[0].deviceId;
       }
     });
+
+    // Check if the user has interacted with audio before
+    const hasInteracted = localStorage.getItem('hasInteractedWithAudio');
+    this.hasInteractedWithAudio = hasInteracted === 'true';
+    
+    // Check saved language preference
+    const savedLanguage = localStorage.getItem('uiLanguage');
+    if (savedLanguage === 'es') {
+      this.isSpanish = true;
+    }
   }
 
   toggleStreamingMode() {
@@ -73,6 +194,10 @@ export class AppComponent implements OnInit, OnDestroy {
         this.streamingSubscription = null;
       }
     }
+    
+    // Clear the audio queue when switching modes
+    this.audioQueue = [];
+    this.isAudioPlaying = false;
   }
 
   reconnectWebSocket() {
@@ -159,15 +284,37 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private playAudioFromBlob(audioBlob: Blob) {
+    // Add the new audio blob to the queue
+    this.audioQueue.push(audioBlob);
+    
+    // If no audio is currently playing, start playing from the queue
+    if (!this.isAudioPlaying) {
+      this.playNextAudioFromQueue();
+    }
+  }
+
+  public playNextAudioFromQueue() {
+    // If the queue is empty, mark as not playing and return
+    if (this.audioQueue.length === 0) {
+      this.isAudioPlaying = false;
+      return;
+    }
+    
+    // Mark that audio is now playing
+    this.isAudioPlaying = true;
+    
+    // Get the next audio blob from the queue
+    const nextAudioBlob = this.audioQueue.shift();
+    
     // Revoke previous URL if it exists
     if (this.audioUrl) {
       URL.revokeObjectURL(this.audioUrl);
     }
     
     // Create a new URL for the audio blob
-    this.audioUrl = URL.createObjectURL(audioBlob);
+    this.audioUrl = URL.createObjectURL(nextAudioBlob!);
     
-    // Play the audio
+    // Play the audio after a short delay to ensure the audio element is updated
     setTimeout(() => {
       if (this.audioPlayer?.nativeElement) {
         // Set the output device first
@@ -175,9 +322,20 @@ export class AppComponent implements OnInit, OnDestroy {
           this.setAudioOutput(this.selectedSpeakerId);
         }
         
-        // Then play the audio
-        this.audioPlayer.nativeElement.play()
-          .catch(err => console.warn('Auto-play failed:', err));
+        // If user hasn't interacted with audio yet and this is mobile, show the modal
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (!this.hasInteractedWithAudio && isMobile) {
+          this.showAudioModal = true;
+        } else {
+          // Try to play automatically if user has interacted before
+          this.audioPlayer.nativeElement.play()
+            .catch(err => {
+              console.warn('Auto-play failed:', err);
+              // Mark as not playing so user can manually start
+              this.isAudioPlaying = false;
+            });
+        }
       }
     });
   }
@@ -352,10 +510,42 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Record that the user has interacted with audio
+  onAudioInteraction() {
+    this.hasInteractedWithAudio = true;
+    localStorage.setItem('hasInteractedWithAudio', 'true');
+    this.showAudioModal = false;
+    
+    // Mark that audio is now playing
+    this.isAudioPlaying = true;
+    
+    // Try to play the audio
+    if (this.audioPlayer?.nativeElement) {
+      this.audioPlayer.nativeElement.play()
+        .catch(err => {
+          console.error('Play failed even after interaction:', err);
+          this.isAudioPlaying = false; // Reset flag if play fails
+        });
+    }
+  }
+
+  // Close the modal without playing
+  closeAudioModal() {
+    this.showAudioModal = false;
+  }
+
+  // Toggle UI language
+  toggleLanguage() {
+    this.isSpanish = !this.isSpanish;
+    localStorage.setItem('uiLanguage', this.isSpanish ? 'es' : 'en');
+  }
+
   ngOnDestroy() {
     if (this.audioUrl) {
       URL.revokeObjectURL(this.audioUrl);
     }
+    
+    this.audioQueue = [];
     
     if (this.streamingSubscription) {
       this.streamingSubscription.unsubscribe();

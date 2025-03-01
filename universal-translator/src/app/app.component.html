@@ -1,52 +1,73 @@
 <div class="container">
   <header>
-    <h1>Universal Translator</h1>
+    <div class="header-top">
+      <h1>{{ translations.title }}</h1>
+      
+      <!-- Language toggle button -->
+      <button class="language-toggle" (click)="toggleLanguage()">
+        {{ isSpanish ? 'English' : 'Español' }}
+      </button>
+    </div>
+    
+    <!-- Move audio player to the top -->
+    <div class="audio-player-container" *ngIf="audioUrl">
+      <audio #audioPlayer controls [src]="audioUrl" (play)="onAudioInteraction()" (ended)="playNextAudioFromQueue()">
+        Your browser does not support the audio element.
+      </audio>
+      
+      <!-- Play button indicator - only show when audio is available but user hasn't interacted -->
+      <div *ngIf="!hasInteractedWithAudio" class="play-button-indicator">
+        <div class="indicator-arrow">↑</div>
+        <div class="indicator-text">{{ isSpanish ? 'Presiona play para escuchar' : 'Press play to listen' }}</div>
+      </div>
+    </div>
+    
     <div class="mode-selector">
       <label>
         <input type="checkbox" [checked]="isStreamingMode" (change)="toggleStreamingMode()">
-        Streaming Mode
+        {{ translations.streamingMode }}
       </label>
       <span class="mode-description" *ngIf="isStreamingMode">
-        Real-time streaming mode is active - translations will appear as you speak
+        {{ translations.streamingModeDescription }}
       </span>
       <span class="mode-description" *ngIf="!isStreamingMode">
-        Batch mode is active - translations will appear after you finish speaking
+        {{ translations.batchModeDescription }}
       </span>
       
       <!-- Connection status indicator -->
       <span *ngIf="isStreamingMode" class="connection-status" 
             [class.connected]="translationService.isWebSocketConnected()"
             [class.disconnected]="!translationService.isWebSocketConnected()">
-        {{ translationService.isWebSocketConnected() ? 'Connected' : 'Disconnected' }}
+        {{ translationService.isWebSocketConnected() ? translations.connected : translations.disconnected }}
       </span>
       
-      <!-- New device selector button -->
+      <!-- Device selector button -->
       <button class="device-selector-btn" (click)="toggleDeviceSelector()">
-        <i class="fa fa-cog"></i> Audio Devices
+        <i class="fa fa-cog"></i> {{ translations.audioDevices }}
       </button>
     </div>
   </header>
 
-  <main>
-    <!-- WebSocket debug information (only visible when streaming mode is active) -->
-    <div *ngIf="isStreamingMode" class="debug-panel">
-      <div class="debug-info">
-        <strong>WebSocket URL:</strong> {{ translationService.getWebSocketUrl() }}
+  <!-- Audio instructions modal -->
+  <div class="audio-modal-overlay" *ngIf="showAudioModal">
+    <div class="audio-modal">
+      <h3>{{ translations.enableAudioTitle }}</h3>
+      <p>{{ translations.enableAudioInstructions1 }}</p>
+      <p>{{ translations.enableAudioInstructions2 }}</p>
+      <div class="audio-modal-buttons">
+        <button class="audio-modal-play-btn" (click)="onAudioInteraction()">{{ translations.gotItPlayAudio }}</button>
+        <button class="audio-modal-close-btn" (click)="closeAudioModal()">{{ translations.close }}</button>
       </div>
-      <button (click)="reconnectWebSocket()" class="debug-btn">
-        Reconnect WebSocket
-      </button>
-      <button (click)="testWebSocketConnection()" class="debug-btn">
-        Test Connection
-      </button>
     </div>
+  </div>
 
+  <main>
     <div class="translation-container">
       <div class="input-section">
-        <h2>Input</h2>
+        <h2>{{ translations.input }}</h2>
         <textarea 
           [(ngModel)]="inputText" 
-          placeholder="Enter text to translate..."
+          [placeholder]="translations.inputPlaceholder"
           [disabled]="isLoading"
           rows="5"
         ></textarea>
@@ -56,7 +77,7 @@
             (click)="translateText()" 
             [disabled]="isLoading || !inputText.trim()"
             class="translate-btn">
-            Translate
+            {{ translations.translate }}
           </button>
           
           <button 
@@ -64,40 +85,33 @@
             [disabled]="isLoading || (isStreamingMode && !translationService.isWebSocketConnected())"
             [class.recording]="audioRecordingService.recording$ | async"
             class="record-btn">
-            {{ (audioRecordingService.recording$ | async) ? 'Stop Recording' : 'Start Recording' }}
+            {{ (audioRecordingService.recording$ | async) ? translations.stopRecording : translations.startRecording }}
           </button>
         </div>
       </div>
 
       <div class="output-section">
-        <h2>Translation</h2>
+        <h2>{{ translations.translation }}</h2>
         <div class="translation-output" [class.loading]="isLoading">
           <div *ngIf="isLoading" class="loader"></div>
           <textarea 
             [value]="translatedText" 
-            placeholder="Translation will appear here..."
+            [placeholder]="translations.translationPlaceholder"
             readonly
             rows="5"
           ></textarea>
-        </div>
-
-        <div class="audio-output" *ngIf="audioUrl">
-          <h3>Generated Audio</h3>
-          <audio #audioPlayer controls [src]="audioUrl">
-            Your browser does not support the audio element.
-          </audio>
         </div>
       </div>
     </div>
 
     <div *ngIf="isStreamingMode && streamedTranscriptions.length > 0" class="streaming-history">
-      <h3>Streaming History</h3>
+      <h3>{{ translations.streamingHistory }}</h3>
       <div class="streaming-entry" *ngFor="let entry of streamedTranscriptions; let i = index">
         <div *ngIf="entry.transcribed_text" class="transcription">
-          <strong>Transcribed:</strong> {{ entry.transcribed_text }}
+          <strong>{{ translations.transcribed }}:</strong> {{ entry.transcribed_text }}
         </div>
         <div *ngIf="entry.translated_text" class="translation">
-          <strong>Translated:</strong> {{ entry.translated_text }}
+          <strong>{{ translations.translated }}:</strong> {{ entry.translated_text }}
         </div>
         <hr *ngIf="i < streamedTranscriptions.length - 1">
       </div>
@@ -108,37 +122,37 @@
       <button *ngIf="isStreamingMode && !translationService.isWebSocketConnected()" 
               (click)="reconnectWebSocket()" 
               class="reconnect-btn">
-        Reconnect WebSocket
+        {{ isSpanish ? 'Reconectar WebSocket' : 'Reconnect WebSocket' }}
       </button>
     </div>
   </main>
 
-  <!-- New device selector panel -->
+  <!-- Device selector panel -->
   <div class="device-selector-panel" *ngIf="showDeviceSelector">
     <div class="device-row">
-      <label for="microphone-select">Microphone:</label>
+      <label for="microphone-select">{{ translations.microphone }}:</label>
       <select id="microphone-select" [value]="selectedMicrophoneId" (change)="onMicrophoneChange($event)">
         <option *ngFor="let device of audioInputDevices" [value]="device.deviceId">
-          {{ device.label || 'Microphone ' + (audioInputDevices.indexOf(device) + 1) }}
+          {{ device.label || (translations.microphone + ' ' + (audioInputDevices.indexOf(device) + 1)) }}
         </option>
       </select>
     </div>
     <div class="device-row">
-      <label for="speaker-select">Speaker:</label>
+      <label for="speaker-select">{{ translations.speaker }}:</label>
       <select id="speaker-select" [value]="selectedSpeakerId" (change)="onSpeakerChange($event)">
         <option *ngFor="let device of audioOutputDevices" [value]="device.deviceId">
-          {{ device.label || 'Speaker ' + (audioOutputDevices.indexOf(device) + 1) }}
+          {{ device.label || (translations.speaker + ' ' + (audioOutputDevices.indexOf(device) + 1)) }}
         </option>
       </select>
     </div>
     <div class="device-info">
-      <p *ngIf="audioInputDevices.length === 0">No microphones detected. Please check your connections.</p>
-      <p *ngIf="audioOutputDevices.length === 0">No speakers detected. Please check your connections.</p>
+      <p *ngIf="audioInputDevices.length === 0">{{ translations.noMicrophonesDetected }}</p>
+      <p *ngIf="audioOutputDevices.length === 0">{{ translations.noSpeakersDetected }}</p>
       <p class="device-privacy-note">
-        <small>Note: Speaker selection only works in Chrome, Edge, and Opera. Other browsers will use the system default.</small>
+        <small>{{ translations.speakerSelectionNote }}</small>
       </p>
       <p class="device-privacy-note">
-        <small>If device names don't appear, you may need to grant persistent audio permission to this site.</small>
+        <small>{{ translations.devicePermissionNote }}</small>
       </p>
     </div>
   </div>
